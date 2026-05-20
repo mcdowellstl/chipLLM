@@ -1,0 +1,17 @@
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = false
+# Cloud Run sets $PORT; Streamlit reads it here
+port = 8080
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "dark"
+primaryColor = "#f97316"
+backgroundColor = "#0d0f14"
+secondaryBackgroundColor = "#14171f"
+textColor = "#f0f2f8"
+font = "sans serif"

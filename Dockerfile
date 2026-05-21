@@ -5,8 +5,8 @@ WORKDIR /build
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
- && pip install --no-cache-dir -r requirements.txt
-
+ && python -m venv /opt/venv \
+ && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
@@ -16,17 +16,14 @@ RUN useradd --create-home --shell /bin/bash chipllm
 USER chipllm
 WORKDIR /home/chipllm/app
 
-# Copy installed packages from builder
-COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy the self-contained virtual environment and update PATH
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy application source
 COPY --chown=chipllm:chipllm . .
 
-# Cloud Run injects $PORT (default 8080)
-ENV PORT=8080
-
 EXPOSE 8080
 
-# Streamlit reads PORT from config.toml (set to 8080) — matches Cloud Run
-ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0"]
+# Run via shell invocation so Streamlit dynamically binds to Cloud Run's $PORT
+CMD ["sh", "-c", "streamlit run app.py --server.port=${PORT} --server.address=0.0.0.0"]

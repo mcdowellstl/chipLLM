@@ -8,7 +8,13 @@ Each entry contains:
   - content:  full troubleshooting playbook injected into context window
 """
 
-PLAYBOOKS: list[dict] = [
+import os
+import re
+
+# ---------------------------------------------------------------------------
+# Fallback hardcoded playbooks (used if L0_KA is empty)
+# ---------------------------------------------------------------------------
+FALLBACK_PLAYBOOKS: list[dict] = [
     {
         "id": "POS_PRINTER_OFFLINE",
         "keywords": [
@@ -226,6 +232,74 @@ PLAYBOOKS: list[dict] = [
 ]
 
 
+def _load_playbooks_from_html() -> list[dict]:
+    playbooks = []
+    dir_path = os.path.join(os.path.dirname(__file__), "L0_KA")
+    if not os.path.exists(dir_path):
+        return []
+    
+    for filename in os.listdir(dir_path):
+        if filename.endswith(".html"):
+            file_path = os.path.join(dir_path, filename)
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                
+                # Extract meta id
+                meta_id_match = re.search(r'<meta\s+name=["\']id["\']\s+content=["\']([^"\']+)["\']', content, re.IGNORECASE)
+                meta_id = meta_id_match.group(1) if meta_id_match else os.path.splitext(filename)[0]
+                
+                # Extract meta keywords
+                meta_kws_match = re.search(r'<meta\s+name=["\']keywords["\']\s+content=["\']([^"\']+)["\']', content, re.IGNORECASE)
+                keywords_str = meta_kws_match.group(1) if meta_kws_match else ""
+                keywords = [kw.strip() for kw in keywords_str.split(",") if kw.strip()]
+                
+                # Extract title
+                title_match = re.search(r'<title>(.*?)</title>', content, re.IGNORECASE)
+                title = title_match.group(1) if title_match else meta_id.replace("_", " ").title()
+                
+                # Extract <body> content
+                body_match = re.search(r'<body>(.*?)</body>', content, re.DOTALL | re.IGNORECASE)
+                body_content = body_match.group(1).strip() if body_match else content.strip()
+                
+                # Translate simple HTML tags to clean Markdown to save Vertex AI tokens
+                clean_text = body_content
+                clean_text = re.sub(r'<h1[^>]*>(.*?)</h1>', r'# \1\n', clean_text, flags=re.IGNORECASE)
+                clean_text = re.sub(r'<h2[^>]*>(.*?)</h2>', r'## \1\n', clean_text, flags=re.IGNORECASE)
+                clean_text = re.sub(r'<h3[^>]*>(.*?)</h3>', r'### \1\n', clean_text, flags=re.IGNORECASE)
+                clean_text = re.sub(r'<li[^>]*>(.*?)</li>', r'- \1', clean_text, flags=re.IGNORECASE)
+                clean_text = re.sub(r'<p[^>]*>(.*?)</p>', r'\1\n', clean_text, flags=re.IGNORECASE | re.DOTALL)
+                clean_text = re.sub(r'<br\s*/?>', r'\n', clean_text, flags=re.IGNORECASE)
+                clean_text = re.sub(r'<code[^>]*>(.*?)</code>', r'`\1`', clean_text, flags=re.IGNORECASE)
+                clean_text = re.sub(r'<strong[^>]*>(.*?)</strong>', r'**\1**', clean_text, flags=re.IGNORECASE)
+                clean_text = re.sub(r'<em[^>]*>(.*?)</em>', r'*\1*', clean_text, flags=re.IGNORECASE)
+                clean_text = re.sub(r'<[^>]+>', '', clean_text)
+                
+                # Decode basic html entities
+                clean_text = clean_text.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"')
+                clean_text = re.sub(r'\n\s*\n', '\n\n', clean_text).strip()
+                
+                playbooks.append({
+                    "id": meta_id,
+                    "keywords": keywords,
+                    "title": title,
+                    "content": clean_text
+                })
+            except Exception as e:
+                # Silently log errors
+                pass
+                
+    return playbooks
+
+
+# Load dynamic HTML playbooks
+PLAYBOOKS = _load_playbooks_from_html()
+
+# Fallback to the original hardcoded ones if folder is empty or not found
+if not PLAYBOOKS:
+    PLAYBOOKS = FALLBACK_PLAYBOOKS
+
+
 # ---------------------------------------------------------------------------
 # RAG retrieval – lightweight keyword matching
 # ---------------------------------------------------------------------------
@@ -245,3 +319,4 @@ def retrieve_context(user_message: str, top_k: int = 1) -> list[dict]:
 
     scored.sort(key=lambda x: x[0], reverse=True)
     return [p for _, p in scored[:top_k]]
+

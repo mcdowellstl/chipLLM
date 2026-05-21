@@ -24,6 +24,11 @@ DEFAULT_STORE  = "67067"               # pre-selected default
 STORE_OPTIONS  = ["67067", "67068", "67069"]  # all authorized stores
 
 # ---------------------------------------------------------------------------
+# L0_KA Playbook Directory (Dynamic RAG)
+# ---------------------------------------------------------------------------
+# Handled in knowledge_base.py
+
+# ---------------------------------------------------------------------------
 # Page config – must be the very first Streamlit call
 # ---------------------------------------------------------------------------
 
@@ -50,15 +55,15 @@ st.markdown(
   --bg-panel:     #14171f;
   --bg-card:      #1a1d28;
   --bg-input:     #1f2333;
-  --accent:       #f97316;       /* vivid orange — kitchen urgency */
-  --accent-dim:   #c2580e;
-  --accent-glow:  rgba(249,115,22,.25);
+  --accent:       #da291c;       /* McDonald's Red */
+  --accent-dim:   #a81a10;       /* Dark Red */
+  --accent-glow:  rgba(218, 41, 28, .25);
   --user-bubble:  #1e3a5f;
   --bot-bubble:   #1a1d28;
   --border:       rgba(255,255,255,.07);
   --text-primary: #f0f2f8;
   --text-muted:   #8892a4;
-  --text-accent:  #f97316;
+  --text-accent:  #ffc72c;       /* McDonald's Yellow/Gold accent */
   --success:      #22d3a0;
   --danger:       #f43f5e;
   --radius:       18px;
@@ -112,14 +117,73 @@ html, body, [class*="css"] {
 
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) {
-  flex: 1.5 !important;
+  flex: 1.3 !important;
 }
 
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2),
+  + [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
+  flex: 1.9 !important;
+}
+
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) {
-  flex: 1.2 !important;
+  flex: 1.1 !important;
+}
+
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(4) {
+  flex: 0.8 !important;
+}
+
+/* Custom styles for selectbox in header bar */
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] > div > div {
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  color: #f0f2f8 !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  padding: 0 4px !important;
+  min-height: 28px !important;
+  height: 28px !important;
+  border-radius: 6px !important;
+  line-height: 1.2 !important;
+  letter-spacing: .1px !important;
+  margin-top: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] > div > div:hover {
+  background: rgba(218,41,28,.15) !important;
+  border-color: rgba(255,199,44,.5) !important;
+  color: #ffc72c !important;
+}
+
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] svg {
+  fill: #8892a4 !important;
+  width: 14px !important;
+  height: 14px !important;
+}
+
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [data-baseweb="select"] {
+  height: 28px !important;
+}
+
+/* Override default large padding inside the header selectbox to fit store text */
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [class*="ValueContainer"] {
+  padding-left: 2px !important;
+  padding-right: 2px !important;
+}
+
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [data-baseweb="select"] > div {
+  padding-left: 4px !important;
+  padding-right: 18px !important;
 }
 
 /* Custom styles for header buttons */
@@ -143,9 +207,9 @@ html, body, [class*="css"] {
 
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] .stButton > button:hover {
-  background: rgba(249,115,22,.15) !important;
-  border-color: rgba(249,115,22,.5) !important;
-  color: #f97316 !important;
+  background: rgba(218,41,28,.15) !important;
+  border-color: rgba(255,199,44,.5) !important;
+  color: #ffc72c !important;
   transform: none !important;
   opacity: 1 !important;
 }
@@ -204,7 +268,7 @@ html, body, [class*="css"] {
 
 /* Bot avatar */
 [data-testid="chatAvatarIcon-assistant"] {
-  background: linear-gradient(135deg, var(--accent) 0%, #ea580c 100%) !important;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--text-accent) 100%) !important;
   box-shadow: 0 2px 10px var(--accent-glow) !important;
   border-radius: 50% !important;
 }
@@ -226,9 +290,9 @@ html, body, [class*="css"] {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: rgba(249,115,22,.12);
-  border: 1px solid rgba(249,115,22,.3);
-  color: var(--accent);
+  background: rgba(218,41,28,.12);
+  border: 1px solid rgba(255,199,44,.3);
+  color: var(--text-accent);
   font-size: 10px;
   font-weight: 600;
   padding: 3px 8px;
@@ -249,7 +313,7 @@ html, body, [class*="css"] {
 /* Override Streamlit's chat input ──────────────────────────────────────── */
 [data-testid="stChatInput"] {
   background: var(--bg-input) !important;
-  border: 1.5px solid rgba(249,115,22,.35) !important;
+  border: 1.5px solid rgba(218,41,28,.35) !important;
   border-radius: 24px !important;
   padding: 14px 18px !important;
   font-family: 'Inter', sans-serif !important;
@@ -318,9 +382,9 @@ html, body, [class*="css"] {
   text-align: right;
 }
 
-.sev-critical { color: var(--danger) !important; }
-.sev-high { color: #fb923c !important; }
-.sev-medium { color: #facc15 !important; }
+.sev-critical { color: var(--accent) !important; } /* McDonald's Red */
+.sev-high { color: var(--text-accent) !important; } /* McDonald's Yellow */
+.sev-medium { color: #ffd97d !important; } /* Lighter Gold */
 .sev-low { color: var(--success) !important; }
 
 /* ── Streamlit default element overrides ────────────────────────────────── */
@@ -341,14 +405,15 @@ html, body, [class*="css"] {
 .stButton > button:hover {
   opacity: 0.9 !important;
   transform: translateY(-1px) !important;
+  box-shadow: 0 0 0 2px #ffc72c !important;
 }
 
 /* ── Streamlit default markdown in chat ──────────────────────────────────── */
 .stMarkdown p { margin: 0 0 6px; }
 .stMarkdown ol, .stMarkdown ul { padding-left: 18px; margin: 4px 0; }
 .stMarkdown code {
-  background: rgba(249,115,22,.12);
-  color: var(--accent);
+  background: rgba(218,41,28,.12);
+  color: var(--text-accent);
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 12px;
@@ -357,17 +422,40 @@ html, body, [class*="css"] {
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(249,115,22,.3); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: rgba(218,41,28,.3); border-radius: 4px; }
 
 /* Streamlit selectbox in auth card */
 [data-testid="stSelectbox"] > div > div {
   background: #1a1d28 !important;
-  border: 1px solid rgba(249,115,22,.35) !important;
+  border: 1px solid rgba(218,41,28,.35) !important;
   border-radius: 12px !important;
   color: #f0f2f8 !important;
   font-size: 20px !important;
   font-weight: 700 !important;
   min-height: 52px !important;
+}
+
+/* ── Premium Suggestion Chips ───────────────────────────────────────────── */
+div.chips-sentinel + div[data-testid="stHorizontalBlock"] button {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #f0f2f8 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 20px !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  min-height: 36px !important;
+  height: 36px !important;
+  padding: 0 16px !important;
+  transition: all 0.2s ease !important;
+  box-shadow: none !important;
+  margin-bottom: 12px !important;
+}
+
+div.chips-sentinel + div[data-testid="stHorizontalBlock"] button:hover {
+  background: rgba(218, 41, 28, 0.15) !important;
+  border-color: rgba(255, 199, 44, 0.5) !important;
+  color: #ffc72c !important;
+  transform: translateY(-1px) !important;
 }
 
 /* ── Hide Streamlit chrome ───────────────────────────────────────────────── */
@@ -394,63 +482,962 @@ if "escalation_triggered" not in st.session_state:
 if "rag_hits" not in st.session_state:
     st.session_state.rag_hits = {}  # msg_index -> playbook title
 
-# Auth state
+# Auth & Ticket state
 if "store_confirmed" not in st.session_state:
-    st.session_state.store_confirmed = False
+    st.session_state.store_confirmed = True
 if "active_store" not in st.session_state:
     st.session_state.active_store = DEFAULT_STORE
+if "ticket_collection_active" not in st.session_state:
+    st.session_state.ticket_collection_active = False
+if "ticket_collection_is_agent" not in st.session_state:
+    st.session_state.ticket_collection_is_agent = False
+
+if "live_agent_pending_connection" not in st.session_state:
+    st.session_state.live_agent_pending_connection = False
+
+if "escalation_triage_active" not in st.session_state:
+    st.session_state.escalation_triage_active = False
+if "escalation_triage_step" not in st.session_state:
+    st.session_state.escalation_triage_step = None
+if "triage_model" not in st.session_state:
+    st.session_state.triage_model = None
+if "triage_serial" not in st.session_state:
+    st.session_state.triage_serial = None
+if "triage_q1" not in st.session_state:
+    st.session_state.triage_q1 = None
+if "triage_q2" not in st.session_state:
+    st.session_state.triage_q2 = None
+if "triage_q3" not in st.session_state:
+    st.session_state.triage_q3 = None
+if "triage_priority" not in st.session_state:
+    st.session_state.triage_priority = None
+
+def start_escalation_triage(append_welcome: bool = True):
+    st.session_state.escalation_triage_active = True
+    st.session_state.escalation_triage_step = "model"
+    st.session_state.triage_model = None
+    st.session_state.triage_serial = None
+    st.session_state.triage_q1 = None
+    st.session_state.triage_q2 = None
+    st.session_state.triage_q3 = None
+    st.session_state.triage_priority = None
+    st.session_state.manual_ticket_flow = False
+    
+    ts_now = time.strftime("%H:%M")
+    if append_welcome:
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": (
+                "I understand. Since these troubleshooting steps didn't resolve the issue, we need to escalate this and create a support ticket.\n\n"
+                "To prepare your support ticket, I need a few quick details. Can you please provide the device model?"
+            ),
+            "timestamp": ts_now,
+            "blocked": False
+        })
+    else:
+        # Prevent double welcome: append the prompt details to the existing assistant message if missing
+        if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
+            last_msg = st.session_state.messages[-1]
+            if "device model" not in last_msg["content"].lower():
+                last_msg["content"] = last_msg["content"].strip() + "\n\nTo prepare your support ticket, I need a few quick details. Can you please provide the device model?"
+
+def reset_triage_state():
+    st.session_state.escalation_triage_active = False
+    st.session_state.escalation_triage_step = None
+    st.session_state.triage_model = None
+    st.session_state.triage_serial = None
+    st.session_state.triage_q1 = None
+    st.session_state.triage_q2 = None
+    st.session_state.triage_q3 = None
+    st.session_state.triage_priority = None
+
+def calculate_priority_and_finish_triage():
+    q1 = st.session_state.get("triage_q1", "No")
+    q2 = st.session_state.get("triage_q2", "Only one")
+    q3 = st.session_state.get("triage_q3", "Yes")
+    
+    is_q1_yes = "yes" in q1.lower()
+    is_q2_multiples = "multiple" in q2.lower()
+    is_q3_yes = "yes" in q3.lower() if is_q2_multiples else False
+    
+    if is_q1_yes:
+        if not is_q2_multiples:
+            priority = "P1"
+        else: # multiples
+            if not is_q3_yes:
+                priority = "P1"
+            else:
+                priority = "P2"
+    else: # q1 is no
+        if not is_q2_multiples:
+            priority = "P3"
+        else: # multiples
+            if not is_q3_yes:
+                priority = "P3"
+            else:
+                priority = "P4"
+                
+    st.session_state.triage_priority = priority
+    st.session_state.escalation_triage_active = False
+    st.session_state.escalation_triage_step = "complete"
+    st.session_state.ticket_collection_active = True
+
 
 
 # ---------------------------------------------------------------------------
-# Store authentication gate  (blocks all chat UI until resolved)
+# Ticket Collection Interface
 # ---------------------------------------------------------------------------
 
-def _confirm_store(store: str) -> None:
-    st.session_state.active_store = store
-    st.session_state.store_confirmed = True
+def get_diagnostic_summary() -> list[tuple[str, str]]:
+    """
+    Extract key-value pairs (clarifying questions and responses) from session messages.
+    Converts verbatim chat prompts into clean high-fidelity keys like Type, Number, etc.
+    """
+    import re
+    messages = st.session_state.get("messages", [])
+    summary_dict = {}
+    
+    # Process message history pairs
+    for i in range(len(messages) - 1):
+        msg = messages[i]
+        next_msg = messages[i+1]
+        if msg["role"] == "assistant" and next_msg["role"] == "user":
+            q_content = msg["content"].lower()
+            ans_clean = next_msg["content"].replace("**", "").replace("`", "").strip()
+            
+            # 1. Type detection
+            if any(kw in q_content for kw in ["where is the printer", "printer located", "location", "what type", "which type"]):
+                t_val = "POS"
+                if "kvs" in ans_clean.lower() or "kitchen" in ans_clean.lower():
+                    t_val = "KVS"
+                elif "kiosk" in ans_clean.lower():
+                    t_val = "Kiosk"
+                elif "bos" in ans_clean.lower() or "back office" in ans_clean.lower():
+                    t_val = "BOS"
+                summary_dict["Type"] = t_val
+                
+            # 2. Number detection
+            elif any(kw in q_content for kw in ["which pos number", "which device number", "which kiosk number", "which unit", "device number", "unit number"]):
+                current_type = summary_dict.get("Type", "POS")
+                num_only = re.sub(r"\D", "", ans_clean)
+                if num_only:
+                    summary_dict["Number"] = f"{current_type}{num_only}"
+                else:
+                    summary_dict["Number"] = ans_clean
+                    
+            # 3. What is the issue
+            elif any(kw in q_content for kw in ["describe the issue", "what is the issue", "what symptom", "experiencing"]):
+                summary_dict["What is the issue"] = ans_clean.capitalize()
+                
+            # 4. Is there visible paper
+            elif "visible paper" in q_content:
+                summary_dict["Is there visible paper"] = ans_clean.capitalize()
+                
+            # 5. Internal Jam Roller C
+            elif any(kw in q_content for kw in ["internal jam roller", "roller c", "roller"]):
+                summary_dict["Internal Jam Roller C"] = f"{ans_clean.capitalize()} — not resolved" if ans_clean.lower() == "no" else ans_clean
+                
+            # 6. Device Information
+            elif any(kw in q_content for kw in ["serial number", "model", "device information"]):
+                summary_dict["Device Information"] = ans_clean
+                
+            # 7. Are you OTP
+            elif "otp" in q_content:
+                summary_dict["Are you OTP or OTP cer"] = ans_clean.capitalize()
+
+    # If first user message exists, use it to seed "What is the issue"
+    if "What is the issue" not in summary_dict:
+        user_msgs = [m["content"] for m in messages if m["role"] == "user"]
+        if user_msgs:
+            first_msg = user_msgs[0].replace("**", "").replace("`", "").strip()
+            if len(first_msg) > 30:
+                first_msg = first_msg[:27] + "..."
+            summary_dict["What is the issue"] = first_msg.capitalize()
+
+    # We want to return exactly these keys in order to mirror the premium screenshot
+    default_summary = [
+        ("Type", "POS"),
+        ("Number", "POS1"),
+        ("What is the issue", "Paper Jam"),
+        ("Is there visible paper", "No"),
+        ("Internal Jam Roller C", "No — not resolved"),
+        ("Device Information", "Skipped device info"),
+        ("Are you OTP or OTP cer", "No")
+    ]
+    
+    final_summary = []
+    for key, def_val in default_summary:
+        val = summary_dict.get(key)
+        if not val:
+            # Smart defaults depending on text cues
+            if key == "Type":
+                all_text = " ".join([m["content"] for m in messages]).lower()
+                if "kiosk" in all_text:
+                    val = "Kiosk"
+                elif "kvs" in all_text or "kitchen" in all_text:
+                    val = "KVS"
+                else:
+                    val = def_val
+            elif key == "Number":
+                all_text = " ".join([m["content"] for m in messages]).lower()
+                num_match = re.search(r"\b(pos|kiosk|kds|kvs|unit)?\s*#?\s*(\d)\b", all_text)
+                t = summary_dict.get("Type", "POS")
+                if num_match:
+                    val = f"{t}{num_match.group(2)}"
+                else:
+                    val = f"{t}1"
+            else:
+                val = def_val
+        if key == "Device Information":
+            t_model = st.session_state.get("triage_model")
+            t_serial = st.session_state.get("triage_serial")
+            if t_model or t_serial:
+                m_str = t_model if t_model else "Unknown"
+                s_str = t_serial if t_serial else "Unknown"
+                val = f"Model: {m_str}, S/N: {s_str}"
+        final_summary.append((key, val))
+        
+    # Append triage questions if available
+    if st.session_state.get("triage_priority"):
+        final_summary.append(("Device Model", st.session_state.get("triage_model", "Unknown")))
+        final_summary.append(("Serial Number", st.session_state.get("triage_serial", "Unknown")))
+        final_summary.append(("Stopping Orders/Payments", st.session_state.get("triage_q1", "No")))
+        final_summary.append(("Only Device of its Kind", st.session_state.get("triage_q2", "Only one")))
+        if "multiple" in st.session_state.get("triage_q2", "").lower():
+            final_summary.append(("Other Devices Functional", st.session_state.get("triage_q3", "Yes")))
+        final_summary.append(("Calculated Priority", st.session_state.get("triage_priority", "P3")))
+        
+    return final_summary
 
 
-if not st.session_state.store_confirmed:
+def get_choices_from_message(content: str) -> list[str]:
+    """
+    Extract discrete choice options from typical assistant questions.
+    Supports Yes/No questions, Location questions, and Unit numbers.
+    Ensures that options do not contain quotes and filters out 'e.g.' prefixes.
+    """
+    import re
+    content_lower = content.lower()
+    
+    # 0. Sequential Triage questions
+    if "device model" in content_lower:
+        return ["Unknown"]
+    if "device serial number" in content_lower or "serial number" in content_lower:
+        return ["Unknown"]
+    if "completely stopping your store from taking orders or payments" in content_lower:
+        return ["Yes", "No"]
+    if "only device of its kind" in content_lower:
+        return ["Only one", "There are multiples"]
+    if "other devices of this kind online and functional" in content_lower:
+        return ["Yes", "No"]
 
+    # 0. Case routing choices
+    if "cases with more details" in content_lower or "quicker resolution" in content_lower:
+        return ["Manual Ticket Flow", "Continue with Automated Flow"]
+    
+    # 1. Yes/No questions
+    if any(phrase in content_lower for phrase in [
+        "did this resolve", "resolve the issue", "visible paper", "otp or otp cert", 
+        "readable now", "connectivity restored", "showing the welcome screen", 
+        "drawer opening", "performance acceptable", "lights on now", "orders appearing",
+        "touchscreen responding", "reader working", "fixed the issue", "is paper out"
+    ]):
+        return ["Yes", "No"]
+        
+    # 2. Location/Type questions
+    if ("where" in content_lower and "printer" in content_lower and "located" in content_lower) or "type of printer" in content_lower or all(kw in content_lower for kw in ["pos", "kvs", "kiosk", "bos"]):
+        return ["POS", "KVS", "Kiosk", "BOS"]
+        
+    # 3. Unit number questions
+    if any(phrase in content_lower for phrase in [
+        "which pos number", "which kiosk number", "which device number", "which unit number", 
+        "what # device", "what number", "device number is exper", "number is exper"
+    ]):
+        return ["1", "2", "3", "4"]
+
+    # 4. Explicit paren-bounded list of options
+    match_paren = re.search(r"\(([^)]+)\)\s*\??\s*$", content.strip())
+    if match_paren:
+        s = match_paren.group(1).strip()
+        
+        # Clean leading e.g. prefixes completely from the start of the paren text
+        s_clean = re.sub(r"^e\.g\.?,?\s*", "", s, flags=re.IGNORECASE).strip()
+        
+        # Try to find all quoted substrings (standard or curly quotes)
+        quoted = re.findall(r'["\'“’‘”]([^"\'“’‘”]+)["\'“’‘”]', s_clean)
+        if quoted:
+            raw_choices = quoted
+        else:
+            # Fallback to comma/or/slash splitting
+            parts = re.split(r",\s*|\s+or\s+|\s*/\s*", s_clean)
+            raw_choices = parts
+            
+        cleaned = []
+        for choice in raw_choices:
+            # Remove all forms of quotes
+            c = choice.replace('"', '').replace("'", "").replace('“', '').replace('”', '').replace('‘', '').replace('’', '').strip()
+            
+            # Ignore e.g. prefixes again if they somehow remain
+            if c.lower().startswith("e.g."):
+                c = c[4:].strip()
+            elif c.lower().startswith("e.g"):
+                c = c[3:].strip()
+                
+            # Strip trailing commas or punctuation
+            c = c.rstrip(",.? ")
+            
+            # Final filter to prevent "e.g" or empty options
+            if c and c.lower() not in ["e.g.", "e.g", "example", "or", "and"]:
+                cleaned.append(c)
+                
+        if 1 < len(cleaned) <= 6:
+            return cleaned
+
+    return []
+
+
+def clean_assistant_message(content: str) -> str:
+    """
+    Remove parenthesized options list from assistant messages if suggestion chips will be displayed,
+    append context-appropriate instruction suffixes, and wrap the troubleshooting salvo in a colored box.
+    """
+    import re
+    
+    # 1. Intercept troubleshooting salvo and put inside a colored box
+    salvo_text = "There are some common troubleshooting steps that might help you fix this issue on your own. We will quickly step through them to see if this solves the issue"
+    if salvo_text.lower() in content.lower():
+        pattern = re.compile(re.escape(salvo_text) + r"\.?", re.IGNORECASE)
+        replacement = (
+            '<div style="background: rgba(218, 41, 28, 0.08); border: 1px solid rgba(255, 199, 44, 0.3); '
+            'border-left: 4px solid var(--accent); padding: 12px 14px; border-radius: 8px; margin: 10px 0; '
+            'font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
+            '⚡ <b>Recommended Troubleshooting</b><br/>'
+            'There are some common troubleshooting steps that might help you fix this issue on your own. '
+            'We will quickly step through them to see if this solves the issue.'
+            '</div>'
+        )
+        content = pattern.sub(replacement, content)
+
+    # 1.5 Intercept priority/impact notice and put inside a colored box
+    priority_text = "To help determine priority for this ticket, let's dig in on impact"
+    if priority_text.lower() in content.lower():
+        pattern = re.compile(re.escape(priority_text) + r"\.?", re.IGNORECASE)
+        replacement = (
+            '<div style="background: rgba(218, 41, 28, 0.08); border: 1px solid rgba(255, 199, 44, 0.3); '
+            'border-left: 4px solid var(--accent); padding: 12px 14px; border-radius: 8px; margin: 10px 0; '
+            'font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
+            '📊 <b>Ticket Impact Assessment</b><br/>'
+            "To help determine priority for this ticket, let's dig in on impact."
+            '</div>'
+        )
+        content = pattern.sub(replacement, content)
+
+    # Prevent duplicate cleanups if suffix is already present
+    if any(suffix in content for suffix in [
+        "(type model # in the text box below)",
+        "(type serial # in the text box below)",
+        "(If complicated, describe in the steps below)",
+        "(if other, type below)"
+    ]):
+        return content
+
+    choices = get_choices_from_message(content)
+    if not choices:
+        return content
+        
+    # Strip any bulleted/numbered lines presenting the choices
+    lines = content.split("\n")
+    filtered_lines = []
+    for line in lines:
+        stripped_line = line.strip()
+        # check if it looks like a list item: starting with *, -, +, \d+. or •
+        is_list_item = re.match(r"^(?:[\*\-\+\•]|\d+\.?)\s*", stripped_line)
+        if is_list_item and stripped_line:
+            line_lower = stripped_line.lower()
+            if any(choice.lower() in line_lower for choice in choices if not choice.isdigit()):
+                continue
+        filtered_lines.append(line)
+        
+    # If the last remaining non-empty line ends with a colon or is a short list introduction, drop it
+    while filtered_lines:
+        last_line = filtered_lines[-1].strip()
+        if not last_line:
+            filtered_lines.pop()
+            continue
+        last_line_lower = last_line.lower()
+        if len(last_line) < 45 and (last_line.endswith(":") or any(phrase in last_line_lower for phrase in ["is it a", "is it"])):
+            filtered_lines.pop()
+        else:
+            break
+            
+    content = "\n".join(filtered_lines).strip()
+        
+    # Remove final parenthesized block that contains options or 'e.g.'
+    cleaned = re.sub(
+        r"\s*\([^)]*(?:e\.g\.|pos|kvs|kiosk|bos|yes|no|or|1|2|3|4|flow|only|multiples|screen|reader|payment|print|jam|garbled)[^)]*\)\s*\??\s*$", 
+        "", 
+        content.strip(), 
+        flags=re.IGNORECASE
+    )
+    
+    if cleaned == content.strip():
+        cleaned = re.sub(
+            r"\s*\([^)]*(?:e\.g\.|pos|kvs|kiosk|bos|yes|no|or|1|2|3|4|flow|only|multiples|screen|reader|payment|print|jam|garbled)[^)]*\)\s*\??\s*$", 
+            "", 
+            content.strip(), 
+            flags=re.IGNORECASE
+        )
+        
+    cleaned = cleaned.rstrip("?:. ")
+    
+    # 4. Dynamic Suffixes Selection
+    content_lower = content.lower()
+    if "device model" in content_lower or "model number" in content_lower or "model #" in content_lower:
+        suffix = "(type model # in the text box below)"
+    elif "serial number" in content_lower or "serial #" in content_lower:
+        suffix = "(type serial # in the text box below)"
+    elif any(phrase in content_lower for phrase in [
+        "did this resolve", "resolve the issue", "visible paper", "otp or otp cert", 
+        "readable now", "connectivity restored", "showing the welcome screen", 
+        "drawer opening", "performance acceptable", "lights on now", "orders appearing",
+        "touchscreen responding", "reader working", "fixed the issue", "is paper out"
+    ]):
+        suffix = "(If complicated, describe in the steps below)"
+    else:
+        suffix = "(if other, type below)"
+        
+    return f"{cleaned}? {suffix}"
+
+
+def trigger_live_agent_flow(user_message_text: str) -> None:
+    """
+    Simulates escalating to a live chat agent by dumping collected diagnostics,
+    showing a connecting message, and scheduling Franklin to join in the next loop.
+    """
+    import time
+    ts_now = time.strftime("%H:%M")
+    st.session_state.ticket_collection_active = False
+    
+    # 1. Append user's escalation request if not already present
+    if not st.session_state.messages or st.session_state.messages[-1]["content"] != user_message_text:
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_message_text,
+            "timestamp": ts_now,
+            "blocked": False
+        })
+        
+    # 2. Get diagnostic summary and format it as a clean markdown table
+    diag_summary = get_diagnostic_summary()
+    active_store = st.session_state.get("active_store", "67067")
+    
+    case_dump_lines = [
+        "🤖 **Live Agent Handoff – Case Details Collected So Far:**\n\n",
+        "| Parameter | Value |\n",
+        "| :--- | :--- |\n",
+        f"| **Active Store** | `Store #{active_store}` |\n"
+    ]
+    for q, a in diag_summary:
+        case_dump_lines.append(f"| **{q}** | `{a}` |\n")
+        
+    case_dump_text = "".join(case_dump_lines)
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": case_dump_text,
+        "timestamp": ts_now,
+        "blocked": False
+    })
+    
+    # 3. Append "Connecting to live agent, please hold.."
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": "Connecting to live agent, please hold..",
+        "timestamp": ts_now,
+        "blocked": False
+    })
+    
+    # Schedule Franklin's message on next run loop
+    st.session_state.live_agent_pending_connection = True
+    st.rerun()
+
+
+def ask_case_flow_options(user_message_text: str | None = None) -> None:
+    """
+    Asks the user if they want to use Manual Ticket Flow or Continue with Automated Flow,
+    showing suggestion buttons for both.
+    """
+    ts_now = time.strftime("%H:%M")
+    st.session_state.ticket_collection_active = False
+    
+    if user_message_text:
+        # Append user's action/message to chat history
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_message_text,
+            "timestamp": ts_now,
+            "blocked": False
+        })
+        
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": (
+            "Cases with more details will lead to quicker resolution. "
+            "Do you want to describe the problem further and attempt basic troubleshooting, "
+            "or jump directly to the ticket creation flow?"
+        ),
+        "timestamp": ts_now,
+        "blocked": False
+    })
+    st.rerun()
+
+
+
+def render_ticket_collection_form(is_live_agent: bool = False) -> None:
+    """
+    Renders an inline form above the chat input to gather final ticket details,
+    styled exactly like the premium dark theme screenshot.
+    """
+    import re
+    active_store = st.session_state.get("active_store", 67067)
+    
+    # Store addresses map
+    STORE_ADDRESSES = {
+        67067: {
+            "address": "1725 Slough Avenue, Scranton, PA 18503",
+            "location": "Scranton Restaurant"
+        },
+        67068: {
+            "address": "120 Paper Place, Scranton, PA 18508",
+            "location": "Scranton North Restaurant"
+        },
+        67069: {
+            "address": "420 Paper Mill Road, Scranton, PA 18512",
+            "location": "Scranton East Restaurant"
+        }
+    }
+    
+    # Check if we should override store ID to matches the screenshot "12345" for perfect fidelity
+    display_store = str(active_store)
+    
+    store_info = STORE_ADDRESSES.get(int(active_store) if str(active_store).isdigit() else 67067, {
+        "address": "1725 Slough Avenue, Scranton, PA 18503",
+        "location": "Scranton Restaurant"
+    })
+    store_address = store_info["address"]
+    store_location = store_info["location"]
+    
+    st.write("---")
+    
+    # Style override for the ticket form inputs and layout to look exactly like the screenshot
     st.markdown(
         """
-        <div style='max-width:420px;margin:60px auto 0;padding:32px 28px;
-                    background:#14171f;border:1px solid rgba(255,255,255,.08);
-                    border-radius:20px;box-shadow:0 12px 40px rgba(0,0,0,.55);'>
-
-          <div style='text-align:center;margin-bottom:24px;'>
-            <div style='font-size:36px;margin-bottom:8px;'>🏪</div>
-            <div style='font-size:18px;font-weight:700;color:#f0f2f8;letter-spacing:-.3px;'>Store Verification</div>
-            <div style='font-size:12px;color:#8892a4;margin-top:4px;'>chipLLM · Secure Access</div>
-          </div>
-
-          <div style='font-size:11px;color:#8892a4;text-transform:uppercase;
-                      letter-spacing:.8px;margin-bottom:10px;'>Select your store</div>
+        <style>
+        .ticket-form-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #f0f2f8;
+            margin-bottom: 16px;
+            text-align: left;
+        }
+        .confirm-header {
+            font-size: 11px;
+            font-weight: 700;
+            color: #ffc72c;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .lock-lbl {
+            font-size: 11px;
+            font-weight: 700;
+            color: #8892a4;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            margin-top: 10px;
+        }
+        
+        /* Container border wrapper override styling to match confirmation box */
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            background-color: #161720 !important;
+            border-radius: 14px !important;
+            padding: 20px !important;
+            margin-bottom: 16px !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2) !important;
+        }
+        
+        /* Make disabled input widgets match the screenshot dark lock style */
+        div[data-testid="stTextInput"] div[data-baseweb="input"] input:disabled {
+            background-color: #1e2030 !important;
+            color: #8892a4 !important;
+            border: 1px solid rgba(255, 255, 255, 0.05) !important;
+            font-size: 13px !important;
+            height: 38px !important;
+            border-radius: 8px !important;
+        }
+        
+        /* Make modifiable input widgets match premium style */
+        div[data-testid="stTextInput"] div[data-baseweb="input"] input:not(:disabled) {
+            background-color: #1e2030 !important;
+            color: #f0f2f8 !important;
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+            font-size: 13px !important;
+            height: 38px !important;
+            border-radius: 8px !important;
+        }
+        
+        /* Focus state selection ring matching screenshot orange border */
+        div[data-testid="stTextInput"] div[data-baseweb="input"] input:not(:disabled):focus {
+            border-color: #ffc72c !important;
+            box-shadow: 0 0 0 1px #ffc72c !important;
+        }
+        
+        .diagnostic-card {
+            background-color: #161720 !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 14px;
+            padding: 20px;
+            margin-top: 14px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2) !important;
+        }
+        .diagnostic-header {
+            font-size: 10px;
+            font-weight: 600;
+            color: #8892a4;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding-bottom: 6px;
+        }
+        .diagnostic-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 11px;
+        }
+        .diagnostic-row:last-child {
+            border-bottom: none;
+        }
+        .diagnostic-key {
+            color: #8892a4;
+            max-width: 60%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .diagnostic-val {
+            color: #f0f2f8;
+            font-weight: 700;
+            text-align: right;
+        }
+        
+        /* Submit button custom styling override via sibling marker */
+        div.submit-btn-marker + div.stButton > button {
+            background-color: #da291c !important;
+            color: #ffffff !important;
+            border: none !important;
+            font-weight: 700 !important;
+            font-size: 14px !important;
+            height: 44px !important;
+            border-radius: 10px !important;
+            transition: all 0.2s ease !important;
+            box-shadow: 0 4px 12px rgba(218,41,28,0.2) !important;
+            margin-top: 12px !important;
+            margin-bottom: 4px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        div.submit-btn-marker + div.stButton > button:hover {
+            background-color: #a81a10 !important;
+            box-shadow: 0 4px 16px rgba(218,41,28,0.35) !important;
+            transform: translateY(-1px) !important;
+        }
+        
+        /* Start Over button custom styling override via sibling marker */
+        div.cancel-btn-marker + div.stButton > button {
+            background-color: #1f2333 !important;
+            color: #8892a4 !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            font-weight: 600 !important;
+            font-size: 13px !important;
+            height: 40px !important;
+            border-radius: 10px !important;
+            margin-top: 6px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        div.cancel-btn-marker + div.stButton > button:hover {
+            color: #f0f2f8 !important;
+            border-color: rgba(255, 255, 255, 0.2) !important;
+            background-color: #262a3f !important;
+        }
+        </style>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
-
-    selected_store = st.selectbox(
-        "Select your store",
-        options=STORE_OPTIONS,
-        index=STORE_OPTIONS.index(DEFAULT_STORE),
-        label_visibility="collapsed",
-        key="store_select",
+    
+    # Form Title
+    st.markdown("<div class='ticket-form-title'>Submitting Support Ticket</div>", unsafe_allow_html=True)
+    
+    # Highlight Warning/Notification Box
+    st.markdown(
+        '<div style="background: rgba(218, 41, 28, 0.08); border: 1px solid rgba(255, 199, 44, 0.3); '
+        'border-left: 4px solid var(--accent); padding: 14px 16px; border-radius: 10px; margin-bottom: 18px; '
+        'box-shadow: 0 4px 15px rgba(218, 41, 28, 0.05);">'
+        '<div style="font-size: 13.5px; font-weight: 700; color: var(--text-accent); display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">'
+        '<span>⚠️</span> Escalation Phase: Ticket Submission'
+        '</div>'
+        '<div style="font-size: 12px; line-height: 1.4; color: #cbd5e1;">'
+        'We have initialized a ServiceNow ticket escalation draft. Please verify the contact '
+        'information and diagnostic details collected so far before finalizing the submission.'
+        '</div>'
+        '</div>',
+        unsafe_allow_html=True
     )
+    
+    # Card 1: Information Confirmation Card (in container with border=True to match wrapper styles)
+    with st.container(border=True):
+        st.markdown(
+            f"<div class='confirm-header'>👤 Confirm Your Information</div>",
+            unsafe_allow_html=True
+        )
+        
+        # Name (non-modifiable)
+        st.markdown("<div class='lock-lbl'>Name 🔒</div>", unsafe_allow_html=True)
+        name_val = st.text_input("Name", value="Jim Halpert", disabled=True, label_visibility="collapsed", key="ticket_name")
+        
+        # Store # (non-modifiable)
+        st.markdown("<div class='lock-lbl'>Store # 🔒</div>", unsafe_allow_html=True)
+        store_val = st.text_input("Store #", value=display_store, disabled=True, label_visibility="collapsed", key="ticket_store_num")
+        
+        # Store Address (non-modifiable)
+        st.markdown("<div class='lock-lbl'>Store Address 🔒</div>", unsafe_allow_html=True)
+        address_val = st.text_input("Store Address", value=store_address, disabled=True, label_visibility="collapsed", key="ticket_store_address")
+        
+        # Phone Number (modifiable, present)
+        st.markdown("<div class='lock-lbl' style='color:#f0f2f8; margin-top:10px;'>Phone Number</div>", unsafe_allow_html=True)
+        phone_val = st.text_input("Phone Number", value="(570) 555-0142", label_visibility="collapsed", key="ticket_phone")
+        
+        st.markdown("<hr style='margin: 14px 0; border: none; border-top: 1px solid rgba(255,255,255,0.06);'>", unsafe_allow_html=True)
+        
+        # Backup contact (optional)
+        st.markdown("<div style='font-size:11px; font-weight:700; color:var(--text-accent); letter-spacing:0.8px; text-transform:uppercase; margin-bottom:8px;'>Backup Contact <span style='font-size:9px; color:#8892a4; text-transform:lowercase; font-weight:normal;'>optional</span></div>", unsafe_allow_html=True)
+        
+        st.markdown("<div class='lock-lbl' style='color:#8892a4;'>Backup Name</div>", unsafe_allow_html=True)
+        backup_name_val = st.text_input("Backup Name", placeholder="Backup contact name", label_visibility="collapsed", key="ticket_backup_name")
+        
+        st.markdown("<div class='lock-lbl' style='color:#8892a4;'>Backup Phone</div>", unsafe_allow_html=True)
+        backup_phone_val = st.text_input("Backup Phone", placeholder="(555) 555-0100", label_visibility="collapsed", key="ticket_backup_phone")
+        
+    # Card 2: Manual Ticket Details (if manual flow is active)
+    manual_flow = st.session_state.get("manual_ticket_flow", False)
+    if manual_flow:
+        with st.container(border=True):
+            st.markdown(
+                f"<div class='confirm-header'>📝 Enter Ticket Details</div>",
+                unsafe_allow_html=True
+            )
+            st.markdown("<div class='lock-lbl' style='color:#f0f2f8; text-transform:none;'>Short Description</div>", unsafe_allow_html=True)
+            st.text_input("Short Description", placeholder="e.g. POS terminal 2 screen is black", label_visibility="collapsed", key="ticket_manual_short_desc")
+            
+            st.markdown("<div class='lock-lbl' style='color:#f0f2f8; text-transform:none; margin-top:10px;'>Description</div>", unsafe_allow_html=True)
+            st.text_area("Description", placeholder="Describe the problem with as much detail as possible...", label_visibility="collapsed", key="ticket_manual_desc")
 
-    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-
-    if st.button(
-        f"✅  Confirm Store #{selected_store}",
-        use_container_width=True,
-        key="auth_confirm",
-    ):
-        _confirm_store(selected_store)
-        st.rerun()
-
-    # Close the card div
+    # Card 3: Diagnostic Summary Card
+    diag_summary = get_diagnostic_summary()
+    
+    st.markdown("<div class='diagnostic-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='diagnostic-header'>Diagnostic Summary</div>", unsafe_allow_html=True)
+    for q, a in diag_summary:
+        st.markdown(
+            f"<div class='diagnostic-row'>"
+            f"  <div class='diagnostic-key'>{q}</div>"
+            f"  <div class='diagnostic-val'>{a}</div>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
     st.markdown("</div>", unsafe_allow_html=True)
-    st.stop()
+    
+    # Buttons with dynamic style markers
+    st.markdown("<div class='submit-btn-marker'></div>", unsafe_allow_html=True)
+    if st.button("🎫 Submit Support Ticket", use_container_width=True, key="submit_ticket_collection"):
+        if manual_flow:
+            m_s_desc = st.session_state.get("ticket_manual_short_desc", "").strip()
+            m_desc = st.session_state.get("ticket_manual_desc", "").strip()
+            if not m_s_desc or not m_desc:
+                st.error("⚠️ Please enter both a Short Description and Description.")
+                st.stop()
+                
+        import random
+        # ServiceNow Ticket Number format: INC followed by 7 digits
+        inc_num = f"INC{random.randint(1000000, 9999999)}"
+        
+        # Determine category and sub-category dynamically
+        all_chat_text = " ".join([m["content"] for m in st.session_state.messages]).lower()
+        summary_text = " ".join([f"{q} {a}" for q, a in diag_summary]).lower()
+        combined_text = all_chat_text + " " + summary_text
+        
+        sub_category = "kiosk"
+        if "printer" in combined_text or "print" in combined_text:
+            sub_category = "printer"
+        elif "pos" in combined_text or "terminal" in combined_text or "register" in combined_text:
+            sub_category = "pos"
+            
+        category = "hardware"
+        if any(kw in combined_text for kw in ["slow", "lagging", "crash", "network", "offline", "login", "password"]):
+            category = "software"
+            
+        # Parse serial number if present in history or triage
+        serial_val = "—"
+        if st.session_state.get("triage_serial") and st.session_state.get("triage_serial") != "Unknown":
+            serial_val = st.session_state.triage_serial
+        else:
+            for msg in st.session_state.messages:
+                content = msg["content"]
+                match = re.search(r"\b([A-Z0-9]{2,6}[-]?[\d]{5,12})\b", content)
+                if match:
+                    serial_val = match.group(1)
+                    break
+            
+        # Compile structured dump
+        diagnostic_dump_lines = []
+        diagnostic_dump_lines.append("[Device Details]")
+        diagnostic_dump_lines.append(f"- Store ID: {active_store}")
+        diagnostic_dump_lines.append(f"- Location: {store_location}")
+        diagnostic_dump_lines.append(f"- Reporter: Jim Halpert (Phone: {phone_val})")
+        if st.session_state.get("triage_model"):
+            diagnostic_dump_lines.append(f"- Device Model: {st.session_state.triage_model}")
+        if st.session_state.get("triage_serial"):
+            diagnostic_dump_lines.append(f"- Serial Number: {st.session_state.triage_serial}")
+        if st.session_state.get("triage_priority"):
+            diagnostic_dump_lines.append(f"- Calculated Priority: {st.session_state.triage_priority}")
+            
+        if backup_name_val.strip() or backup_phone_val.strip():
+            b_name = backup_name_val.strip() if backup_name_val.strip() else "None specified"
+            b_phone = backup_phone_val.strip() if backup_phone_val.strip() else "None specified"
+            diagnostic_dump_lines.append(f"- Backup Contact: {b_name} (Phone: {b_phone})")
+            
+        diagnostic_dump_lines.append("\n[Triage Diagnostics]")
+        for q, a in diag_summary:
+            diagnostic_dump_lines.append(f"- {q}: {a}")
+            
+        # Parse troubleshooting steps tried
+        diagnostic_dump_lines.append("\n[Troubleshooting Steps Attempted]")
+        step_index = 1
+        for msg in st.session_state.messages:
+            if msg["role"] == "assistant":
+                content = msg["content"]
+                if any(step_kw in content for step_kw in ["Reboot", "Power cycle", "Clear the Paper Jam", "Clean the Card Reader", "Restart"]):
+                    step_title = "Step"
+                    for line in content.split('\n'):
+                        if any(kw in line for kw in ["Reboot", "Jam", "Cable", "Power", "Reader"]):
+                            step_title = line.replace("**", "").replace("`", "").replace("##", "").strip()
+                            break
+                    diagnostic_dump_lines.append(f"{step_index}. {step_title} (Attempted) -> Outcome: Did not resolve the issue.")
+                    step_index += 1
+                    
+        # If no troubleshooting steps in session but fallback summary is active, populate with realistic defaults
+        if step_index == 1 and len(diag_summary) < 2:
+            diagnostic_dump_lines.append("1. Clear the Paper Jam (Attempted) -> Outcome: Did not resolve the issue.")
+            diagnostic_dump_lines.append("2. Restart the printer unit (Attempted) -> Outcome: Did not resolve the issue.")
+            diagnostic_dump_lines.append("3. Reseat the power/USB connection cable (Attempted) -> Outcome: Did not resolve the issue.")
+        elif step_index == 1:
+            diagnostic_dump_lines.append("- No troubleshooting steps could be attempted or they were skipped.")
+            
+        diagnostic_dump_lines.append("\n[System Action]")
+        diagnostic_dump_lines.append("- Escalated to ServiceNow via virtual assistant chat session.")
+        
+        if manual_flow:
+            short_desc = st.session_state.get("ticket_manual_short_desc", "").strip()
+            full_description_dump = st.session_state.get("ticket_manual_desc", "").strip()
+        else:
+            full_description_dump = "\n".join(diagnostic_dump_lines)
+            
+            # Build Short Description
+            short_desc = f"{sub_category.capitalize()} triage escalation - {diag_summary[0][1] if diag_summary else 'Hardware issue'}"
+            if len(short_desc) > 80:
+                short_desc = short_desc[:77] + "..."
+            
+        # Store metadata
+        meta = {
+            "ticket_id": inc_num,
+            "store_id": f"STORE-{active_store}",
+            "asset_type": sub_category.upper(),
+            "asset_serial_number": serial_val,
+            "severity": "CRITICAL" if category == "software" else "HIGH",
+            "sla_breach_minutes": 30 if category == "software" else 60,
+            "routing_target": "Unisys RTS L1 - SD - US",
+            "auto_dispatch": True,
+            "channel": "chat",
+            "description": full_description_dump,
+            "short_description": short_desc,
+            "category": category,
+            "sub_category": sub_category,
+            "caller": f"Jim Halpert, Store #{active_store}, {store_location}",
+            "contact_type": "chat",
+            "assignment_group": "Unisys RTS L1 - SD - US",
+            "priority": st.session_state.get("triage_priority", "P3")
+        }
+        
+        st.session_state.ticket_metadata = meta
+        st.session_state.escalation_triggered = True
+        
+        # Compile response message for the chat history
+        _ts = time.strftime("%H:%M")
+        
+        success_content = (
+            f"🎫 **ServiceNow Ticket Generated Successfully!**\n\n"
+            f"Below are the registered integration parameters sent to ServiceNow:\n\n"
+            f"| ServiceNow Parameter | Registered Value |\n"
+            f"| :--- | :--- |\n"
+            f"| **Ticket Number** | `{meta['ticket_id']}` |\n"
+            f"| **Priority** | `{meta.get('priority', 'P3')}` |\n"
+            f"| **Caller** | `{meta['caller']}` |\n"
+            f"| **Category** | `{meta['category']}` |\n"
+            f"| **Sub-category** | `{meta['sub_category']}` |\n"
+            f"| **Short Description** | `{meta['short_description']}` |\n"
+            f"| **Contact Type** | `{meta['contact_type']}` |\n"
+            f"| **Assignment Group** | `{meta['assignment_group']}` |\n\n"
+            f"#### 📝 Full Description & Diagnostic Dump:\n"
+            f"```text\n"
+            f"{meta['description']}\n"
+            f"```\n\n"
+            f"An engineer from the **{meta['assignment_group']}** group has been dispatched and is reviewing this ticket."
+        )
+        
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": success_content,
+            "timestamp": _ts,
+            "blocked": False
+        })
+        
+        st.session_state.ticket_collection_active = False
+        st.rerun()
+        
+    st.markdown("<div class='cancel-btn-marker'></div>", unsafe_allow_html=True)
+    if st.button("← Start Over", use_container_width=True, key="cancel_ticket_collection"):
+        st.session_state.messages = []
+        st.session_state.ticket_metadata = None
+        st.session_state.escalation_triggered = False
+        st.session_state.ticket_collection_active = False
+        st.session_state.rag_hits = {}
+        st.session_state.manual_ticket_flow = False
+        reset_triage_state()
+        st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -478,7 +1465,7 @@ with st.sidebar:
 
         st.markdown(
             f"""
-            <div style='font-size:11px; font-weight:600; color:#f97316; text-transform:uppercase;
+            <div style='font-size:11px; font-weight:600; color:var(--text-accent); text-transform:uppercase;
                         letter-spacing:1px; margin-bottom:8px;'>
               ● Live Ticket Generated
             </div>
@@ -486,11 +1473,15 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
+        prio = meta.get("priority", "—")
+        prio_class = "sev-critical" if prio == "P1" else "sev-high" if prio == "P2" else "sev-medium" if prio == "P3" else "sev-low" if prio == "P4" else ""
+
         fields = [
             ("Ticket ID",      meta.get("ticket_id", "—"),             ""),
             ("Store ID",       meta.get("store_id", "—"),               ""),
             ("Asset Type",     meta.get("asset_type", "—"),             ""),
             ("Serial Number",  meta.get("asset_serial_number", "—"),    ""),
+            ("Priority",       prio,                                    prio_class),
             ("Severity",       sev,                                      sev_class),
             ("SLA Breach",     f"{meta.get('sla_breach_minutes')} min", ""),
             ("Routing",        meta.get("routing_target", "—"),         ""),
@@ -522,6 +1513,7 @@ with st.sidebar:
         if st.button("🔄 Clear Ticket"):
             st.session_state.ticket_metadata = None
             st.session_state.escalation_triggered = False
+            reset_triage_state()
             st.rerun()
 
     else:
@@ -553,15 +1545,13 @@ with st.sidebar:
             st.session_state.ticket_metadata = None
             st.session_state.escalation_triggered = False
             st.session_state.rag_hits = {}
-            # Reset auth so user is re-prompted on next load (optional safeguard)
+            st.session_state.ticket_collection_active = False
+            st.session_state.manual_ticket_flow = False
+            reset_triage_state()
             st.rerun()
     with col2:
         if st.button("🎫 Force Ticket", use_container_width=True):
-            if st.session_state.messages:
-                meta = extract_ticket_metadata(st.session_state.messages)
-                meta["store_id"] = f"STORE-{st.session_state.active_store}"
-                st.session_state.ticket_metadata = meta
-                st.rerun()
+            ask_case_flow_options("Force Ticket")
 
     # Connection status
     st.divider()
@@ -581,18 +1571,15 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 
 st.markdown('<div id="header-sentinel"></div>', unsafe_allow_html=True)
-h_col1, h_col2, h_col3 = st.columns([1.6, 1.2, 1.2], gap="small")
+h_col1, h_col2, h_col3, h_col4 = st.columns([1.3, 1.9, 1.1, 0.8], gap="small")
 
 with h_col1:
     st.markdown(
         f"""
-        <div style="display:flex; align-items:center; gap:8px; height: 100%; margin-top: 6px;">
-            <div style="font-size:18px; background:linear-gradient(135deg, var(--accent) 0%, #ea580c 100%); width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 8px var(--accent-glow); flex-shrink:0;">🍔</div>
+        <div style="display:flex; align-items:center; gap:8px; height: 100%; margin-top: 4px;">
+            <div style="font-size:20px; background:linear-gradient(135deg, var(--accent) 0%, var(--text-accent) 100%); width:32px; height:32px; border-radius:6px; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 8px var(--accent-glow); flex-shrink:0;">🍔</div>
             <div style="min-width:0;">
-                <div style="font-size:12px; font-weight:700; color:#f0f2f8; line-height:1.1; letter-spacing:-0.2px;">chipLLM</div>
-                <div class="pulse-dot-active" style="font-size:9px; color:#22d3a0; font-weight:600; display:flex; align-items:center; gap:3px; margin-top: 1px;">
-                    #{st.session_state.active_store}
-                </div>
+                <div style="font-size:22px; font-weight:800; color:#f0f2f8; line-height:1.0; letter-spacing:-0.5px; padding-bottom: 2px;">chipLLM</div>
             </div>
         </div>
         """,
@@ -600,63 +1587,48 @@ with h_col1:
     )
 
 with h_col2:
-    if st.button("🎫 Open Case", use_container_width=True, key="btn_header_case"):
-        _ts = time.strftime("%H:%M")
-        meta = extract_ticket_metadata(st.session_state.messages)
-        meta["store_id"] = f"STORE-{st.session_state.active_store}"
-        st.session_state.ticket_metadata = meta
-        st.session_state.escalation_triggered = True
+    selected_store = st.selectbox(
+        "Header Store select",
+        options=STORE_OPTIONS,
+        index=STORE_OPTIONS.index(st.session_state.active_store) if st.session_state.active_store in STORE_OPTIONS else 0,
+        format_func=lambda x: f"Store: {x}",
+        label_visibility="collapsed",
+        key="header_store_selector"
+    )
+    if selected_store != st.session_state.active_store:
+        st.session_state.active_store = selected_store
         st.session_state.messages.append({
             "role": "assistant",
-            "content": (
-                f"🎫 **Ticket opened** for Store #{st.session_state.active_store}.\n\n"
-                f"Ticket ID: `{meta['ticket_id']}`  \nSeverity: **{meta['severity']}**\n\n"
-                "Your ticket has been submitted. A technician will follow up within the SLA window."
-            ),
-            "timestamp": _ts, "blocked": False,
+            "content": f"🔄 **Switched active context to Store #{selected_store}.** How can I assist you with this store?",
+            "timestamp": time.strftime("%H:%M"),
+            "blocked": False
         })
         st.rerun()
 
 with h_col3:
-    if st.button("💬 Chat with Agent", use_container_width=True, key="btn_header_agent"):
-        _ts = time.strftime("%H:%M")
-        meta = extract_ticket_metadata(st.session_state.messages)
-        meta["store_id"] = f"STORE-{st.session_state.active_store}"
-        meta["routing_target"] = "GENESYS_TIER1_PRIORITY"
-        meta["auto_dispatch"] = True
-        st.session_state.ticket_metadata = meta
-        st.session_state.escalation_triggered = True
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": "🧑\u200d💻 **Connecting you to a live agent...**\n\n"
-                       f"Your session for Store #{st.session_state.active_store} has been escalated to **Tier 1 Support**. "
-                       "An agent will join this chat shortly. Please stay on the line.",
-            "timestamp": _ts, "blocked": False,
-        })
-        st.rerun()
+    if st.button("🎫 Open Case", use_container_width=True, key="btn_header_case"):
+        ask_case_flow_options("Open Case")
+
+with h_col4:
+    if st.button("Live Agent", use_container_width=True, key="btn_header_agent"):
+        trigger_live_agent_flow("Live Agent")
 
 # ---------------------------------------------------------------------------
 # Welcome message (injected once)
 # ---------------------------------------------------------------------------
 
 if not st.session_state.messages:
-    st.session_state.messages.append(
-        {
-            "role": "assistant",
-            "content": (
-                f"👋 **Hey there, Manager!** I'm **chipLLM**, your restaurant tech support assistant "
-                f"for **Store #{st.session_state.active_store}**.\n\n"
-                "I can help you troubleshoot:\n"
-                "- \U0001f5a8\ufe0f **POS Printers** (jams, offline, receipt issues)\n"
-                "- \U0001f4bb **POS Terminals** (crashes, payment hardware, login)\n"
-                "- \U0001f4fa **Kitchen Displays / Waystations** (boot loops, display faults)\n"
-                "- \U0001f916 **Self-Order Kiosks** (freezes, payment modules, scanner)\n\n"
-                "What's going wrong? Describe the issue and I'll get you sorted fast."
-            ),
-            "timestamp": time.strftime("%H:%M"),
-            "blocked": False,
-        }
-    )
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": (
+            "Hello! I am chipLLM, your restaurant tech support virtual engineer. "
+            "I'll help you troubleshoot on-site issues and if we can't resolve it here, "
+            "I'll create a support ticket or get you over to a live chat agent.\n\n"
+            "Please describe your issue."
+        ),
+        "timestamp": time.strftime("%H:%M"),
+        "blocked": False
+    })
 
 # ---------------------------------------------------------------------------
 # Render conversation history
@@ -681,110 +1653,274 @@ for i, msg in enumerate(st.session_state.messages):
                 unsafe_allow_html=True,
             )
         else:
-            st.markdown(msg["content"])
+            display_content = msg["content"]
+            if role == "assistant":
+                display_content = clean_assistant_message(display_content)
+            st.markdown(display_content, unsafe_allow_html=True)
 
         st.markdown(f'<div class="msg-time">{msg.get("timestamp", "")}</div>', unsafe_allow_html=True)
 
+# ---------------------------------------------------------------------------
+# Live Agent Franklin connection gate
+# ---------------------------------------------------------------------------
+if st.session_state.get("live_agent_pending_connection", False):
+    st.session_state.live_agent_pending_connection = False
+    time.sleep(2)
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": "Hello, my name is Franklin. I am reviewing your case now.",
+        "timestamp": time.strftime("%H:%M"),
+        "blocked": False
+    })
+    st.rerun()
 
-# Bottom action bar removed (integrated in header)
+
+# ---------------------------------------------------------------------------
+# Ticket Form Render Gate
+# ---------------------------------------------------------------------------
+
+if st.session_state.ticket_collection_active:
+    is_live_agent = st.session_state.get("ticket_collection_is_agent", False)
+    render_ticket_collection_form(is_live_agent=is_live_agent)
+
+# ---------------------------------------------------------------------------
+# Suggestion Chips Rendering Block
+# ---------------------------------------------------------------------------
+if "suggestion_click" not in st.session_state:
+    st.session_state.suggestion_click = None
+
+if not st.session_state.ticket_collection_active:
+    last_msg = st.session_state.messages[-1] if st.session_state.messages else None
+    if last_msg and last_msg["role"] == "assistant":
+        choices = get_choices_from_message(last_msg["content"])
+        if choices:
+            st.markdown("<div class='chips-sentinel'></div>", unsafe_allow_html=True)
+            # Make sure we use proper flex columns so they sit on a single line
+            cols = st.columns(len(choices))
+            for idx, (col, choice) in enumerate(zip(cols, choices)):
+                with col:
+                    if st.button(choice, key=f"chip_{choice}_{idx}", use_container_width=True):
+                        st.session_state.suggestion_click = choice
+                        st.rerun()
 
 # ---------------------------------------------------------------------------
 # Chat input
 # ---------------------------------------------------------------------------
 
-if user_input := st.chat_input(
-    placeholder="Describe the issue… (e.g. 'Printer jammed')",
-    key="chat_input",
-):
-    ts_now = time.strftime("%H:%M")
+chat_placeholder = "Describe the issue… (e.g. 'Printer jammed')" if len(st.session_state.messages) <= 1 else "Type here"
 
-    # --- Store user message ------------------------------------------------
-    st.session_state.messages.append(
-        {
+chat_val = st.chat_input(
+    placeholder=chat_placeholder,
+    key="chat_input",
+)
+
+user_input = None
+if st.session_state.suggestion_click:
+    user_input = st.session_state.suggestion_click
+    st.session_state.suggestion_click = None
+elif chat_val:
+    user_input = chat_val
+
+if user_input:
+    ts_now = time.strftime("%H:%M")
+    lower_input = user_input.lower()
+    
+    # Intercept commands like "start over"
+    if "start over" in lower_input or "restart" in lower_input:
+        st.session_state.messages = []
+        st.session_state.ticket_metadata = None
+        st.session_state.escalation_triggered = False
+        st.session_state.ticket_collection_active = False
+        st.session_state.rag_hits = {}
+        st.session_state.manual_ticket_flow = False
+        reset_triage_state()
+        st.rerun()
+        
+    # Intercept sequential triage state machine
+    elif st.session_state.get("escalation_triage_active", False):
+        step = st.session_state.get("escalation_triage_step")
+        
+        # Append user's choice to history
+        st.session_state.messages.append({
             "role": "user",
             "content": user_input,
             "timestamp": ts_now,
-            "blocked": False,
-        }
-    )
+            "blocked": False
+        })
+        
+        if step == "model":
+            st.session_state.triage_model = user_input
+            st.session_state.escalation_triage_step = "serial"
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": "Got it. What is the device serial number?",
+                "timestamp": ts_now,
+                "blocked": False
+            })
+            st.rerun()
+            
+        elif step == "serial":
+            st.session_state.triage_serial = user_input
+            st.session_state.escalation_triage_step = "q1"
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": "To help determine priority for this ticket, let's dig in on impact.\n\nIs this issue completely stopping your store from taking orders or payments right now?",
+                "timestamp": ts_now,
+                "blocked": False
+            })
+            st.rerun()
+            
+        elif step == "q1":
+            st.session_state.triage_q1 = user_input
+            st.session_state.escalation_triage_step = "q2"
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": "Is this the only device of its kind in your store?",
+                "timestamp": ts_now,
+                "blocked": False
+            })
+            st.rerun()
+            
+        elif step == "q2":
+            st.session_state.triage_q2 = user_input
+            if "multiple" in user_input.lower():
+                st.session_state.escalation_triage_step = "q3"
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": "Are the other devices of this kind online and functional?",
+                    "timestamp": ts_now,
+                    "blocked": False
+                })
+            else:
+                calculate_priority_and_finish_triage()
+            st.rerun()
+            
+        elif step == "q3":
+            st.session_state.triage_q3 = user_input
+            calculate_priority_and_finish_triage()
+            st.rerun()
+        
+    # Intercept live agent keywords
+    elif any(kw in lower_input for kw in ["live agent", "human", "agent", "talk to an agent", "talk to a human"]):
+        trigger_live_agent_flow(user_input)
+        
+    # Intercept case routing choices
+    elif "manual ticket flow" in lower_input:
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_input,
+            "timestamp": ts_now,
+            "blocked": False
+        })
+        st.session_state.manual_ticket_flow = True
+        st.session_state.ticket_collection_active = True
+        st.session_state.ticket_collection_is_agent = False
+        st.rerun()
+        
+    elif "continue with automated flow" in lower_input:
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_input,
+            "timestamp": ts_now,
+            "blocked": False
+        })
+        st.session_state.manual_ticket_flow = False
+        st.session_state.ticket_collection_active = False
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": "Understood! Let's continue with the automated troubleshooting. Please describe your issue.",
+            "timestamp": ts_now,
+            "blocked": False
+        })
+        st.rerun()
+        
+    # Intercept manual ticket escalation keywords
+    elif "escalate" in lower_input or "ticket" in lower_input or "open case" in lower_input:
+        ask_case_flow_options(user_input)
+        
+    else:
+        # Standard AI chat logic
+        st.session_state.messages.append(
+            {
+                "role": "user",
+                "content": user_input,
+                "timestamp": ts_now,
+                "blocked": False,
+            }
+        )
 
-    # --- Layer 1: Guardrails -----------------------------------------------
-    guard = check_guardrails(user_input)
+        # --- Layer 1: Guardrails -----------------------------------------------
+        guard = check_guardrails(user_input)
 
-    if guard.blocked:
+        if guard.blocked:
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": guard.refusal_text,
+                    "timestamp": ts_now,
+                    "blocked": True,
+                }
+            )
+            st.rerun()
+
+        # --- Layer 2: Escalation keyword check ---------------------------------
+        if guard.escalation_triggered:
+            start_escalation_triage()
+            st.rerun()
+
+        # --- Layer 3: Dynamic HTML RAG retrieval -------------------------------
+        relevant_playbooks = retrieve_context(user_input, top_k=1)
+        rag_context: str | None = None
+        rag_title: str | None = None
+
+        if relevant_playbooks:
+            playbook = relevant_playbooks[0]
+            rag_context = playbook["content"]
+            rag_title = playbook["title"]
+
+        # --- Layer 4: LLM call (streaming) -------------------------------------
+        client = ChipLLMClient()
+
+        with st.chat_message("assistant", avatar="🤖"):
+            full_response = ""
+            response_placeholder = st.empty()
+
+            try:
+                for chunk in client.stream_response(
+                    messages=st.session_state.messages,
+                    rag_context=rag_context,
+                ):
+                    full_response += chunk
+                    response_placeholder.markdown(f"{full_response}▌")
+
+                response_placeholder.markdown(full_response)
+
+            except Exception as exc:
+                full_response = (
+                    f"⚠️ **LLM connectivity issue:** `{exc}`\n\n"
+                    "Verify that ADC is active (`gcloud auth application-default login`) "
+                    "and that `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` are set correctly."
+                )
+
+        # --- Store assistant response -----------------------------------------
+        msg_idx = len(st.session_state.messages)
         st.session_state.messages.append(
             {
                 "role": "assistant",
-                "content": guard.refusal_text,
+                "content": full_response,
                 "timestamp": ts_now,
-                "blocked": True,
+                "blocked": False,
             }
         )
+
+        # Tag with RAG hit
+        if rag_title:
+            st.session_state.rag_hits[msg_idx] = rag_title
+
+        # --- Post-response: check if response triggers escalation -------------
+        if not st.session_state.ticket_collection_active and not st.session_state.get("escalation_triage_active", False):
+            post_guard = check_guardrails(full_response)
+            if post_guard.escalation_triggered:
+                start_escalation_triage(append_welcome=False)
+
         st.rerun()
-
-    # --- Layer 2: Escalation / resolution detection ------------------------
-    if guard.escalation_triggered and not st.session_state.escalation_triggered:
-        st.session_state.escalation_triggered = True
-        meta = extract_ticket_metadata(st.session_state.messages)
-        meta["store_id"] = f"STORE-{st.session_state.active_store}"
-        st.session_state.ticket_metadata = meta
-
-    # --- Layer 3: RAG retrieval --------------------------------------------
-    relevant_playbooks = retrieve_context(user_input, top_k=1)
-    rag_context: str | None = None
-    rag_title: str | None = None
-
-    if relevant_playbooks:
-        playbook = relevant_playbooks[0]
-        rag_context = playbook["content"]
-        rag_title = playbook["title"]
-
-    # --- Layer 4: LLM call (streaming) -------------------------------------
-    client = ChipLLMClient()
-
-    with st.chat_message("assistant", avatar="🤖"):
-        full_response = ""
-        response_placeholder = st.empty()
-
-        try:
-            for chunk in client.stream_response(
-                messages=st.session_state.messages,
-                rag_context=rag_context,
-            ):
-                full_response += chunk
-                response_placeholder.markdown(f"{full_response}▌")
-
-            response_placeholder.markdown(full_response)
-
-        except Exception as exc:
-            full_response = (
-                f"⚠️ **LLM connectivity issue:** `{exc}`\n\n"
-                "Verify that ADC is active (`gcloud auth application-default login`) "
-                "and that `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` are set correctly."
-            )
-
-    # --- Store assistant response -----------------------------------------
-    msg_idx = len(st.session_state.messages)
-    st.session_state.messages.append(
-        {
-            "role": "assistant",
-            "content": full_response,
-            "timestamp": ts_now,
-            "blocked": False,
-        }
-    )
-
-    # Tag with RAG hit
-    if rag_title:
-        st.session_state.rag_hits[msg_idx] = rag_title
-
-    # --- Post-response: check if response triggers escalation -------------
-    if not st.session_state.escalation_triggered:
-        post_guard = check_guardrails(full_response)
-        if post_guard.escalation_triggered:
-            st.session_state.escalation_triggered = True
-            meta = extract_ticket_metadata(st.session_state.messages)
-            meta["store_id"] = f"STORE-{st.session_state.active_store}"
-            st.session_state.ticket_metadata = meta
-
-    st.rerun()

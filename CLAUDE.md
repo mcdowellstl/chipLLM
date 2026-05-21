@@ -28,7 +28,7 @@ Each file has a single responsibility. Agents must not collapse modules or add c
 | `app.py` | Streamlit UI, session state, orchestration loop | No LLM calls, no raw SDK imports, no business logic |
 | `guardrails.py` | Layer 1 keyword filtering + intent signals | No LLM calls, no Streamlit imports, no RAG |
 | `knowledge_base.py` | Playbook data + `retrieve_context()` retrieval | No LLM calls, no session state, no HTTP |
-| `llm_client.py` | SDK wrapper, context assembly, ticket extraction | No Streamlit imports, no guardrail logic |
+| `llm_client.py` | SDK wrapper, context assembly, ticket extraction, **ADC client factory** | No guardrail logic — `import streamlit` is permitted here **exclusively** for the `@st.cache_resource` decorator on `get_genai_client()` |
 
 **Rule:** If a new feature touches more than two modules, stop and create a new dedicated module.
 
@@ -187,16 +187,25 @@ This is intentional for the full-screen mobile app feel. Do not re-enable it.
 | `ticket_metadata` | `dict \| None` | `None` until escalation triggered. Set by `extract_ticket_metadata()` only. |
 | `escalation_triggered` | `bool` | Monotonically true — never reset to False mid-session except via "Clear Chat". |
 | `rag_hits` | `dict[int, str]` | Maps message index → playbook title for RAG badge rendering. |
-| `llm_client` | `ChipLLMClient` | Instantiated once at session start. Do not re-instantiate per message. |
+
+> **Note:** `llm_client` is no longer stored in session_state. The underlying `genai.Client` is a process-level singleton managed by `@st.cache_resource` in `llm_client.py`. `ChipLLMClient()` is instantiated inline per message — it is trivially cheap because it only calls `get_genai_client()` which returns the cached object.
 
 ---
 
 ## 9. Environment & Deployment Rules
 
-### 9.1 Auth Priority Order
-1. `GOOGLE_CLOUD_PROJECT` set → use Vertex AI (`vertexai=True`) — **production path**
-2. `GOOGLE_API_KEY` set → use Google AI Studio — **local dev only**
-3. Neither set → app starts but LLM calls fail with a user-visible error message (graceful degradation)
+### 9.1 Auth — ADC Only (No API Keys, Ever)
+Authentication is exclusively via **Application Default Credentials (ADC)**.
+
+```
+Local dev:   gcloud auth application-default login
+Cloud Run:   Workload Identity — service account attached to the Cloud Run revision
+```
+
+- `genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)` — this is the **only** permitted initialization pattern.
+- `GOOGLE_API_KEY` is **prohibited** in all code and config files. It is not a valid fallback.
+- Service account JSON key files are **prohibited**. Use `roles/aiplatform.user` on the service account, not downloaded keys.
+- The `get_genai_client()` function in `llm_client.py` is decorated with `@st.cache_resource` — it creates the client **once per server process** and reuses it. Do not create additional client instances.
 
 ### 9.2 Model Selection
 - Default model: `gemini-2.0-flash-001`
@@ -215,7 +224,7 @@ This is intentional for the full-screen mobile app feel. Do not re-enable it.
 | ❌ Prohibited Action | ✅ Correct Alternative |
 |---|---|
 | Call the LLM before running guardrails | Always run `check_guardrails()` first |
-| Add `import streamlit` to any file except `app.py` | Keep Streamlit isolated to the UI layer |
+| Add `import streamlit` to `guardrails.py` or `knowledge_base.py` | Only `app.py` and `llm_client.py` (for `@st.cache_resource`) may import streamlit |
 | Use `generate_content()` (non-streaming) | Always use `generate_content_stream()` |
 | Inject RAG context into every message in history | Inject into `messages[-1]` only |
 | Store conversation history in a database | Use `st.session_state.messages` exclusively |
@@ -224,6 +233,9 @@ This is intentional for the full-screen mobile app feel. Do not re-enable it.
 | Hardcode hex color values in CSS | Use CSS custom properties (`var(--token)`) |
 | Remove the mobile viewport constraint | `max-width: 420px` is a product requirement |
 | Add a new playbook without the full schema | Follow the schema in Section 5.1 exactly |
+| Use `GOOGLE_API_KEY` or a service account JSON key path | Use ADC — `gcloud auth application-default login` |
+| Create a second `genai.Client()` anywhere in the codebase | Call `get_genai_client()` from `llm_client.py` — it is the single source of truth |
+| Store `llm_client` in `st.session_state` | The client is managed by `@st.cache_resource`; instantiate `ChipLLMClient()` inline |
 
 ---
 

@@ -2,21 +2,51 @@
 llm_client.py
 -------------
 Vertex AI / Google Gen AI SDK wrapper for chipLLM.
-Handles context assembly (system prompt + RAG snippets + history)
-and streams completions from gemini-2.0-flash.
+
+Authentication: Application Default Credentials (ADC) exclusively.
+  - Local dev:   `gcloud auth application-default login`
+  - Cloud Run:   Workload Identity (service account attached to the revision)
+  No API keys. No service account JSON paths. No credential overrides.
 """
 
 from __future__ import annotations
 
 import os
-import json
 import re
 import random
 import string
 from datetime import datetime
 
-import google.genai as genai
+import streamlit as st
+from google import genai
 from google.genai import types as genai_types
+
+# ---------------------------------------------------------------------------
+# Runtime context — sourced from environment, never hardcoded
+# ---------------------------------------------------------------------------
+
+PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "your-gcp-project-id")
+LOCATION   = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+
+
+@st.cache_resource
+def get_genai_client() -> genai.Client:
+    """
+    Initializes the Google Gen AI Client using native Application Default
+    Credentials (ADC). Decorated with @st.cache_resource so the underlying
+    HTTP connection pool is created exactly once and shared across all
+    Streamlit sessions for the lifetime of the server process.
+
+    Local:      binds to the active developer token from
+                `gcloud auth application-default login`.
+    Cloud Run:  seamlessly inherits the runtime service identity via
+                Workload Identity — zero credential management required.
+    """
+    return genai.Client(
+        vertexai=True,
+        project=PROJECT_ID,
+        location=LOCATION,
+    )
 
 # ---------------------------------------------------------------------------
 # System Prompt – strict persona & domain boundary definition
@@ -57,25 +87,19 @@ Professional, direct, and empathetic. You understand the manager is stressed —
 # ---------------------------------------------------------------------------
 
 class ChipLLMClient:
-    """Thin wrapper around the Google Gen AI SDK for Vertex AI."""
+    """
+    Thin wrapper around the Google Gen AI SDK for Vertex AI.
+
+    The underlying genai.Client is obtained from get_genai_client(), which is
+    decorated with @st.cache_resource — one connection pool per server process,
+    shared across all user sessions. ChipLLMClient itself is lightweight and
+    may be instantiated per-session via st.session_state.
+    """
 
     def __init__(self) -> None:
-        project = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
-        location = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
-        use_vertex = bool(project)
-
-        if use_vertex:
-            self._client = genai.Client(
-                vertexai=True,
-                project=project,
-                location=location,
-            )
-        else:
-            # Fallback: use API key for local development
-            api_key = os.environ.get("GOOGLE_API_KEY", "")
-            self._client = genai.Client(api_key=api_key)
-
-        self._model = os.environ.get("CHIPLLM_MODEL", "gemini-2.0-flash-001")
+        # Reuse the process-level cached client — no new connection on each call
+        self._client = get_genai_client()
+        self._model  = os.environ.get("CHIPLLM_MODEL", "gemini-2.0-flash-001")
 
     def build_contents(
         self,

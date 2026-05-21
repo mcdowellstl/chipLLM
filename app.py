@@ -408,8 +408,6 @@ if "escalation_triggered" not in st.session_state:
 if "rag_hits" not in st.session_state:
     st.session_state.rag_hits = {}  # msg_index -> playbook title
 
-if "llm_client" not in st.session_state:
-    st.session_state.llm_client = ChipLLMClient()
 
 # ---------------------------------------------------------------------------
 # Sidebar – ticket metadata panel
@@ -677,7 +675,9 @@ if user_input := st.chat_input(
         rag_title = playbook["title"]
 
     # --- Layer 4: LLM call (streaming) -------------------------------------
-    client: ChipLLMClient = st.session_state.llm_client
+    # ChipLLMClient is lightweight; the underlying genai.Client is process-cached
+    # via @st.cache_resource in llm_client.py — no new connection is created here.
+    client = ChipLLMClient()
 
     # Placeholder for the streaming response
     with st.spinner(""):
@@ -702,8 +702,8 @@ if user_input := st.chat_input(
         except Exception as exc:
             full_response = (
                 f"⚠️ **LLM connectivity issue:** `{exc}`\n\n"
-                "Check your `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION` environment variables, "
-                "or set `GOOGLE_API_KEY` for local development."
+                "Verify that ADC is active (`gcloud auth application-default login`) "
+                "and that `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` are set correctly."
             )
 
     # --- Store assistant response -----------------------------------------

@@ -335,52 +335,59 @@ html, body, [class*="css"] {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(249,115,22,.3); border-radius: 4px; }
 
-/* ── Bottom action bar ────────────────────────────────────────────────────────────── */
-.action-bar {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
-  gap: 6px;
-  padding: 8px 14px 4px;
+/* ── Bottom action bar – fixed strip just above the chat input ────────────── */
+
+/* Give message history room to breathe above both fixed footers */
+.main .block-container {
+  padding-bottom: 160px !important;
 }
 
-.action-bar .stButton > button {
+/* Move the sticky chat input bar up to leave space for action bar below it */
+[data-testid="stBottom"] {
+  bottom: 46px !important;
+}
+
+/* Target the st.columns() HorizontalBlock immediately after the sentinel div.
+   :has() is supported in Chrome 105+, Safari 15.4+, Firefox 121+. */
+[data-testid="stMarkdownContainer"]:has(#action-bar-sentinel)
+  + [data-testid="stHorizontalBlock"] {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 100% !important;
+  max-width: 740px !important;     /* match Streamlit centered layout */
+  background: #0d1117 !important;
+  border-top: 1px solid rgba(255,255,255,.07) !important;
+  padding: 5px 14px 6px !important;
+  z-index: 90 !important;
+  gap: 6px !important;
+}
+
+/* Shrink all buttons inside the action bar */
+[data-testid="stMarkdownContainer"]:has(#action-bar-sentinel)
+  + [data-testid="stHorizontalBlock"] .stButton > button {
   background: rgba(255,255,255,.05) !important;
   border: 1px solid rgba(255,255,255,.12) !important;
   color: #8892a4 !important;
   font-size: 10px !important;
   font-weight: 600 !important;
-  padding: 7px 4px !important;
-  min-height: 40px !important;
-  border-radius: 10px !important;
-  line-height: 1.3 !important;
+  padding: 5px 6px !important;
+  min-height: 32px !important;
+  border-radius: 8px !important;
+  line-height: 1.2 !important;
   letter-spacing: .2px !important;
   transition: background .15s, border-color .15s, color .15s !important;
+  white-space: nowrap !important;
 }
 
-.action-bar .stButton > button:hover {
+[data-testid="stMarkdownContainer"]:has(#action-bar-sentinel)
+  + [data-testid="stHorizontalBlock"] .stButton > button:hover {
   background: rgba(249,115,22,.12) !important;
   border-color: rgba(249,115,22,.4) !important;
   color: #f97316 !important;
   transform: none !important;
   opacity: 1 !important;
-}
-
-/* ticket button — subtle warm tint */
-.action-bar-ticket .stButton > button {
-  border-color: rgba(249,115,22,.3) !important;
-  color: #fb923c !important;
-}
-
-/* agent button — subtle teal tint */
-.action-bar-agent .stButton > button {
-  border-color: rgba(34,211,160,.25) !important;
-  color: #22d3a0 !important;
-}
-
-/* quit button — subtle red tint */
-.action-bar-quit .stButton > button {
-  border-color: rgba(244,63,94,.25) !important;
-  color: #f43f5e !important;
 }
 
 /* Streamlit selectbox in auth card */
@@ -679,14 +686,15 @@ for i, msg in enumerate(st.session_state.messages):
 # Bottom action bar
 # ---------------------------------------------------------------------------
 
-st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+# Sentinel div — CSS :has(#action-bar-sentinel) targets the st.columns() block
+# that immediately follows and makes it position:fixed at the bottom of the viewport.
+st.markdown('<div id="action-bar-sentinel"></div>', unsafe_allow_html=True)
 
 _ts = time.strftime("%H:%M")
 _ab1, _ab2, _ab3, _ab4 = st.columns(4, gap="small")
 
 with _ab1:
-    st.markdown('<div class="action-bar-ticket">', unsafe_allow_html=True)
-    if st.button("🎫\nOpen a\nTicket Now", use_container_width=True, key="btn_ticket"):
+    if st.button("🎫 Open Case", use_container_width=True, key="btn_ticket"):
         meta = extract_ticket_metadata(st.session_state.messages)
         meta["store_id"] = f"STORE-{st.session_state.active_store}"
         st.session_state.ticket_metadata = meta
@@ -701,11 +709,9 @@ with _ab1:
             "timestamp": _ts, "blocked": False,
         })
         st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
 
 with _ab2:
-    st.markdown('<div class="action-bar-agent">', unsafe_allow_html=True)
-    if st.button("🧑‍💻\nLive\nAgent", use_container_width=True, key="btn_agent"):
+    if st.button("🧑‍💻 Live Agent", use_container_width=True, key="btn_agent"):
         meta = extract_ticket_metadata(st.session_state.messages)
         meta["store_id"] = f"STORE-{st.session_state.active_store}"
         meta["routing_target"] = "GENESYS_TIER1_PRIORITY"

@@ -99,7 +99,7 @@ class ChipLLMClient:
     def __init__(self) -> None:
         # Reuse the process-level cached client — no new connection on each call
         self._client = get_genai_client()
-        self._model  = os.environ.get("CHIPLLM_MODEL", "gemini-2.0-flash-001")
+        self._model  = os.environ.get("CHIPLLM_MODEL", "gemini-2.5-flash")
 
     def build_contents(
         self,

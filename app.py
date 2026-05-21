@@ -17,6 +17,13 @@ from knowledge_base import retrieve_context
 from llm_client import ChipLLMClient, extract_ticket_metadata
 
 # ---------------------------------------------------------------------------
+# Store authentication config
+# ---------------------------------------------------------------------------
+
+DEFAULT_STORE      = "67067"          # pre-loaded store for this session
+AUTHORIZED_STORES  = {"67067", "67068"}  # stores this user may access
+
+# ---------------------------------------------------------------------------
 # Page config – must be the very first Streamlit call
 # ---------------------------------------------------------------------------
 
@@ -352,6 +359,130 @@ if "escalation_triggered" not in st.session_state:
 if "rag_hits" not in st.session_state:
     st.session_state.rag_hits = {}  # msg_index -> playbook title
 
+# Auth state
+if "store_confirmed" not in st.session_state:
+    st.session_state.store_confirmed = False
+if "active_store" not in st.session_state:
+    st.session_state.active_store = DEFAULT_STORE
+if "auth_step" not in st.session_state:
+    # 'confirm_default' | 'unauthorized_fallback'
+    st.session_state.auth_step = "confirm_default"
+if "unauthorized_attempt" not in st.session_state:
+    st.session_state.unauthorized_attempt = ""
+
+
+# ---------------------------------------------------------------------------
+# Store authentication gate  (blocks all chat UI until resolved)
+# ---------------------------------------------------------------------------
+
+def _confirm_store(store: str) -> None:
+    st.session_state.active_store = store
+    st.session_state.store_confirmed = True
+
+
+if not st.session_state.store_confirmed:
+
+    st.markdown(
+        f"""
+        <div style='max-width:420px;margin:60px auto 0;padding:32px 28px;
+                    background:#14171f;border:1px solid rgba(255,255,255,.08);
+                    border-radius:20px;box-shadow:0 12px 40px rgba(0,0,0,.55);'>
+
+          <div style='text-align:center;margin-bottom:24px;'>
+            <div style='font-size:36px;margin-bottom:8px;'>🏪</div>
+            <div style='font-size:18px;font-weight:700;color:#f0f2f8;letter-spacing:-.3px;'>Store Verification</div>
+            <div style='font-size:12px;color:#8892a4;margin-top:4px;'>chipLLM · Secure Access</div>
+          </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if st.session_state.auth_step == "confirm_default":
+        st.markdown(
+            f"""
+            <div style='background:#1a1d28;border:1px solid rgba(249,115,22,.3);
+                        border-radius:14px;padding:18px 20px;margin-bottom:20px;'>
+              <div style='font-size:11px;color:#8892a4;text-transform:uppercase;
+                          letter-spacing:.8px;margin-bottom:6px;'>Detected Store</div>
+              <div style='font-size:26px;font-weight:700;color:#f97316;
+                          letter-spacing:-1px;'>#{DEFAULT_STORE}</div>
+            </div>
+            <div style='font-size:13px;color:#8892a4;margin-bottom:20px;text-align:center;'>
+              Is this the store you're requesting support for?
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if st.button("\u2705  Yes, that's my store", use_container_width=True, key="auth_yes"):
+            _confirm_store(DEFAULT_STORE)
+            st.rerun()
+
+        st.markdown(
+            "<div style='text-align:center;font-size:11px;color:#8892a4;margin:16px 0 8px;'"
+            ">or enter a different store number</div>",
+            unsafe_allow_html=True,
+        )
+
+        with st.form(key="auth_form", clear_on_submit=True):
+            alt = st.text_input(
+                "Store number",
+                placeholder="e.g. 67068",
+                label_visibility="collapsed",
+            )
+            submitted = st.form_submit_button("Submit", use_container_width=True)
+
+        if submitted:
+            stripped = alt.strip()
+            if not stripped or not stripped.isdigit():
+                # Non-numeric or empty → silently proceed with default
+                _confirm_store(DEFAULT_STORE)
+            elif stripped in AUTHORIZED_STORES:
+                _confirm_store(stripped)
+            else:
+                st.session_state.unauthorized_attempt = stripped
+                st.session_state.auth_step = "unauthorized_fallback"
+            st.rerun()
+
+    elif st.session_state.auth_step == "unauthorized_fallback":
+        bad_store = st.session_state.unauthorized_attempt
+        st.markdown(
+            f"""
+            <div style='background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.35);
+                        border-radius:14px;padding:18px 20px;margin-bottom:20px;text-align:center;'>
+              <div style='font-size:22px;margin-bottom:8px;'>\u26d4</div>
+              <div style='font-size:14px;font-weight:600;color:#fda4af;margin-bottom:6px;'>
+                Not Authorized
+              </div>
+              <div style='font-size:12px;color:#8892a4;line-height:1.6;'>
+                You are not authorized on<br>
+                <strong style='color:#f0f2f8;'>Store #{bad_store}</strong>.
+              </div>
+            </div>
+            <div style='font-size:13px;color:#8892a4;margin-bottom:20px;text-align:center;'>
+              Would you like to proceed with your assigned store?
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        if st.button(
+            f"\u2705  Yes, proceed with Store #{DEFAULT_STORE}",
+            use_container_width=True,
+            key="auth_fallback_yes",
+        ):
+            _confirm_store(DEFAULT_STORE)
+            st.rerun()
+
+        if st.button("\u2190  Try a different number", use_container_width=True, key="auth_back"):
+            st.session_state.auth_step = "confirm_default"
+            st.session_state.unauthorized_attempt = ""
+            st.rerun()
+
+    # Close the card div
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
 
 # ---------------------------------------------------------------------------
 # Sidebar – ticket metadata panel
@@ -453,13 +584,14 @@ with st.sidebar:
             st.session_state.ticket_metadata = None
             st.session_state.escalation_triggered = False
             st.session_state.rag_hits = {}
+            # Reset auth so user is re-prompted on next load (optional safeguard)
             st.rerun()
     with col2:
         if st.button("🎫 Force Ticket", use_container_width=True):
             if st.session_state.messages:
-                st.session_state.ticket_metadata = extract_ticket_metadata(
-                    st.session_state.messages
-                )
+                meta = extract_ticket_metadata(st.session_state.messages)
+                meta["store_id"] = f"STORE-{st.session_state.active_store}"
+                st.session_state.ticket_metadata = meta
                 st.rerun()
 
     # Connection status
@@ -480,14 +612,20 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 
 st.markdown(
-    """
+    f"""
     <div class="chip-header">
       <div class="chip-logo">🍔</div>
       <div class="chip-info">
         <div class="chip-name">chipLLM</div>
         <div class="chip-status">Tech Support · Online</div>
       </div>
-      <div style='font-size:20px; cursor:pointer;'>⚡</div>
+      <div style='display:flex;align-items:center;gap:6px;'>
+        <div style='background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.35);
+                    border-radius:8px;padding:3px 9px;font-size:11px;font-weight:600;
+                    color:#f97316;letter-spacing:.3px;'>
+          Store #{st.session_state.active_store}
+        </div>
+      </div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -502,13 +640,14 @@ if not st.session_state.messages:
         {
             "role": "assistant",
             "content": (
-                "👋 **Hey there, Manager!** I'm **chipLLM**, your restaurant tech support assistant.\n\n"
+                f"👋 **Hey there, Manager!** I'm **chipLLM**, your restaurant tech support assistant "
+                f"for **Store #{st.session_state.active_store}**.\n\n"
                 "I can help you troubleshoot:\n"
-                "- 🖨️ **POS Printers** (jams, offline, receipt issues)\n"
-                "- 💻 **POS Terminals** (crashes, payment hardware, login)\n"
-                "- 📺 **Kitchen Displays / Waystations** (boot loops, display faults)\n"
-                "- 🤖 **Self-Order Kiosks** (freezes, payment modules, scanner)\n\n"
-                "What's going wrong? Give me your **Store ID** and a quick description."
+                "- \U0001f5a8\ufe0f **POS Printers** (jams, offline, receipt issues)\n"
+                "- \U0001f4bb **POS Terminals** (crashes, payment hardware, login)\n"
+                "- \U0001f4fa **Kitchen Displays / Waystations** (boot loops, display faults)\n"
+                "- \U0001f916 **Self-Order Kiosks** (freezes, payment modules, scanner)\n\n"
+                "What's going wrong? Describe the issue and I'll get you sorted fast."
             ),
             "timestamp": time.strftime("%H:%M"),
             "blocked": False,
@@ -580,9 +719,9 @@ if user_input := st.chat_input(
     # --- Layer 2: Escalation / resolution detection ------------------------
     if guard.escalation_triggered and not st.session_state.escalation_triggered:
         st.session_state.escalation_triggered = True
-        st.session_state.ticket_metadata = extract_ticket_metadata(
-            st.session_state.messages
-        )
+        meta = extract_ticket_metadata(st.session_state.messages)
+        meta["store_id"] = f"STORE-{st.session_state.active_store}"
+        st.session_state.ticket_metadata = meta
 
     # --- Layer 3: RAG retrieval --------------------------------------------
     relevant_playbooks = retrieve_context(user_input, top_k=1)
@@ -638,8 +777,8 @@ if user_input := st.chat_input(
         post_guard = check_guardrails(full_response)
         if post_guard.escalation_triggered:
             st.session_state.escalation_triggered = True
-            st.session_state.ticket_metadata = extract_ticket_metadata(
-                st.session_state.messages
-            )
+            meta = extract_ticket_metadata(st.session_state.messages)
+            meta["store_id"] = f"STORE-{st.session_state.active_store}"
+            st.session_state.ticket_metadata = meta
 
     st.rerun()

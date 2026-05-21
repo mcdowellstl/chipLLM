@@ -78,59 +78,83 @@ html, body, [class*="css"] {
   max-width: 420px !important;
   padding: 0 !important;
   margin: 0 auto !important;
+  padding-top: 68px !important;
+  padding-bottom: 80px !important;
 }
 
-/* ── Header bar ─────────────────────────────────────────────────────────── */
-.chip-header {
-  background: linear-gradient(135deg, #0d0f14 0%, #1a1d28 100%);
-  border-bottom: 1px solid var(--border);
-  padding: 14px 20px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  box-shadow: 0 2px 20px rgba(0,0,0,.4);
+/* ── Sticky Header bar via sentinel ─────────────────────────────────────── */
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] {
+  position: fixed !important;
+  top: 0 !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: 100% !important;
+  max-width: 420px !important;     /* constraint to match mobile viewport width */
+  background: linear-gradient(135deg, #0d0f14 0%, #1a1d28 100%) !important;
+  border-bottom: 1px solid rgba(255,255,255,.07) !important;
+  padding: 10px 14px !important;
+  z-index: 9999 !important;        /* keep on top */
+  box-shadow: 0 4px 20px rgba(0,0,0,.4) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
 }
 
-.chip-header .chip-logo {
-  width: 44px;
-  height: 44px;
-  background: linear-gradient(135deg, var(--accent) 0%, #ea580c 100%);
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  box-shadow: 0 4px 14px var(--accent-glow);
-  flex-shrink: 0;
+/* Ensure columns stack horizontally nicely inside header */
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+  width: auto !important;
+  flex: unset !important;
+  min-width: 0 !important;
 }
 
-.chip-header .chip-info {
-  flex: 1;
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) {
+  flex: 1.5 !important;
 }
 
-.chip-header .chip-name {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.3px;
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2),
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) {
+  flex: 1.2 !important;
 }
 
-.chip-header .chip-status {
-  font-size: 11px;
-  color: var(--success);
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 5px;
+/* Custom styles for header buttons */
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] .stButton > button {
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  color: #f0f2f8 !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  padding: 4px 8px !important;
+  min-height: 28px !important;
+  height: 28px !important;
+  border-radius: 6px !important;
+  line-height: 1.2 !important;
+  letter-spacing: .1px !important;
+  transition: background .15s, border-color .15s, color .15s !important;
+  white-space: nowrap !important;
+  margin-top: 6px !important;
 }
 
-.chip-header .chip-status::before {
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] .stButton > button:hover {
+  background: rgba(249,115,22,.15) !important;
+  border-color: rgba(249,115,22,.5) !important;
+  color: #f97316 !important;
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+/* Pulse dot active store status indicator */
+.pulse-dot-active::before {
   content: '';
-  width: 7px;
-  height: 7px;
+  width: 5px;
+  height: 5px;
   background: var(--success);
   border-radius: 50%;
   display: inline-block;
@@ -334,61 +358,6 @@ html, body, [class*="css"] {
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(249,115,22,.3); border-radius: 4px; }
-
-/* ── Bottom action bar – fixed strip just above the chat input ────────────── */
-
-/* Give message history room to breathe above both fixed footers */
-.main .block-container {
-  padding-bottom: 160px !important;
-}
-
-/* Move the sticky chat input bar up to leave space for action bar below it */
-[data-testid="stBottom"] {
-  bottom: 46px !important;
-}
-
-/* Target the st.columns() HorizontalBlock immediately after the sentinel div.
-   :has() is supported in Chrome 105+, Safari 15.4+, Firefox 121+. */
-[data-testid="stMarkdownContainer"]:has(#action-bar-sentinel)
-  + [data-testid="stHorizontalBlock"] {
-  position: fixed !important;
-  bottom: 0 !important;
-  left: 50% !important;
-  transform: translateX(-50%) !important;
-  width: 100% !important;
-  max-width: 740px !important;     /* match Streamlit centered layout */
-  background: #0d1117 !important;
-  border-top: 1px solid rgba(255,255,255,.07) !important;
-  padding: 5px 14px 6px !important;
-  z-index: 90 !important;
-  gap: 6px !important;
-}
-
-/* Shrink all buttons inside the action bar */
-[data-testid="stMarkdownContainer"]:has(#action-bar-sentinel)
-  + [data-testid="stHorizontalBlock"] .stButton > button {
-  background: rgba(255,255,255,.05) !important;
-  border: 1px solid rgba(255,255,255,.12) !important;
-  color: #8892a4 !important;
-  font-size: 10px !important;
-  font-weight: 600 !important;
-  padding: 5px 6px !important;
-  min-height: 32px !important;
-  border-radius: 8px !important;
-  line-height: 1.2 !important;
-  letter-spacing: .2px !important;
-  transition: background .15s, border-color .15s, color .15s !important;
-  white-space: nowrap !important;
-}
-
-[data-testid="stMarkdownContainer"]:has(#action-bar-sentinel)
-  + [data-testid="stHorizontalBlock"] .stButton > button:hover {
-  background: rgba(249,115,22,.12) !important;
-  border-color: rgba(249,115,22,.4) !important;
-  color: #f97316 !important;
-  transform: none !important;
-  opacity: 1 !important;
-}
 
 /* Streamlit selectbox in auth card */
 [data-testid="stSelectbox"] > div > div {
@@ -611,25 +580,60 @@ with st.sidebar:
 # Header
 # ---------------------------------------------------------------------------
 
-st.markdown(
-    f"""
-    <div class="chip-header">
-      <div class="chip-logo">🍔</div>
-      <div class="chip-info">
-        <div class="chip-name">chipLLM</div>
-        <div class="chip-status">Tech Support · Online</div>
-      </div>
-      <div style='display:flex;align-items:center;gap:6px;'>
-        <div style='background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.35);
-                    border-radius:8px;padding:3px 9px;font-size:11px;font-weight:600;
-                    color:#f97316;letter-spacing:.3px;'>
-          Store #{st.session_state.active_store}
+st.markdown('<div id="header-sentinel"></div>', unsafe_allow_html=True)
+h_col1, h_col2, h_col3 = st.columns([1.6, 1.2, 1.2], gap="small")
+
+with h_col1:
+    st.markdown(
+        f"""
+        <div style="display:flex; align-items:center; gap:8px; height: 100%; margin-top: 6px;">
+            <div style="font-size:18px; background:linear-gradient(135deg, var(--accent) 0%, #ea580c 100%); width:28px; height:28px; border-radius:6px; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 8px var(--accent-glow); flex-shrink:0;">🍔</div>
+            <div style="min-width:0;">
+                <div style="font-size:12px; font-weight:700; color:#f0f2f8; line-height:1.1; letter-spacing:-0.2px;">chipLLM</div>
+                <div class="pulse-dot-active" style="font-size:9px; color:#22d3a0; font-weight:600; display:flex; align-items:center; gap:3px; margin-top: 1px;">
+                    #{st.session_state.active_store}
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+        """,
+        unsafe_allow_html=True
+    )
+
+with h_col2:
+    if st.button("🎫 Open Case", use_container_width=True, key="btn_header_case"):
+        _ts = time.strftime("%H:%M")
+        meta = extract_ticket_metadata(st.session_state.messages)
+        meta["store_id"] = f"STORE-{st.session_state.active_store}"
+        st.session_state.ticket_metadata = meta
+        st.session_state.escalation_triggered = True
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": (
+                f"🎫 **Ticket opened** for Store #{st.session_state.active_store}.\n\n"
+                f"Ticket ID: `{meta['ticket_id']}`  \nSeverity: **{meta['severity']}**\n\n"
+                "Your ticket has been submitted. A technician will follow up within the SLA window."
+            ),
+            "timestamp": _ts, "blocked": False,
+        })
+        st.rerun()
+
+with h_col3:
+    if st.button("💬 Chat with Agent", use_container_width=True, key="btn_header_agent"):
+        _ts = time.strftime("%H:%M")
+        meta = extract_ticket_metadata(st.session_state.messages)
+        meta["store_id"] = f"STORE-{st.session_state.active_store}"
+        meta["routing_target"] = "GENESYS_TIER1_PRIORITY"
+        meta["auto_dispatch"] = True
+        st.session_state.ticket_metadata = meta
+        st.session_state.escalation_triggered = True
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": "🧑\u200d💻 **Connecting you to a live agent...**\n\n"
+                       f"Your session for Store #{st.session_state.active_store} has been escalated to **Tier 1 Support**. "
+                       "An agent will join this chat shortly. Please stay on the line.",
+            "timestamp": _ts, "blocked": False,
+        })
+        st.rerun()
 
 # ---------------------------------------------------------------------------
 # Welcome message (injected once)
@@ -682,69 +686,7 @@ for i, msg in enumerate(st.session_state.messages):
         st.markdown(f'<div class="msg-time">{msg.get("timestamp", "")}</div>', unsafe_allow_html=True)
 
 
-# ---------------------------------------------------------------------------
-# Bottom action bar
-# ---------------------------------------------------------------------------
-
-# Sentinel div — CSS :has(#action-bar-sentinel) targets the st.columns() block
-# that immediately follows and makes it position:fixed at the bottom of the viewport.
-st.markdown('<div id="action-bar-sentinel"></div>', unsafe_allow_html=True)
-
-_ts = time.strftime("%H:%M")
-_ab1, _ab2, _ab3, _ab4 = st.columns(4, gap="small")
-
-with _ab1:
-    if st.button("🎫 Open Case", use_container_width=True, key="btn_ticket"):
-        meta = extract_ticket_metadata(st.session_state.messages)
-        meta["store_id"] = f"STORE-{st.session_state.active_store}"
-        st.session_state.ticket_metadata = meta
-        st.session_state.escalation_triggered = True
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": (
-                f"🎫 **Ticket opened** for Store #{st.session_state.active_store}.\n\n"
-                f"Ticket ID: `{meta['ticket_id']}`  \nSeverity: **{meta['severity']}**\n\n"
-                "Your ticket has been submitted. A technician will follow up within the SLA window."
-            ),
-            "timestamp": _ts, "blocked": False,
-        })
-        st.rerun()
-
-with _ab2:
-    if st.button("🧑‍💻 Live Agent", use_container_width=True, key="btn_agent"):
-        meta = extract_ticket_metadata(st.session_state.messages)
-        meta["store_id"] = f"STORE-{st.session_state.active_store}"
-        meta["routing_target"] = "GENESYS_TIER1_PRIORITY"
-        meta["auto_dispatch"] = True
-        st.session_state.ticket_metadata = meta
-        st.session_state.escalation_triggered = True
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": "🧑\u200d💻 **Connecting you to a live agent...**\n\n"
-                       f"Your session for Store #{st.session_state.active_store} has been escalated to **Tier 1 Support**. "
-                       "An agent will join this chat shortly. Please stay on the line.",
-            "timestamp": _ts, "blocked": False,
-        })
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# Col 3 — Start Over
-with st.container():
-    if st.button("🔄\nStart\nOver", use_container_width=True, key="btn_restart"):
-        st.session_state.messages = []
-        st.session_state.ticket_metadata = None
-        st.session_state.escalation_triggered = False
-        st.session_state.rag_hits = {}
-        st.rerun()
-
-# Col 4 — Quit (returns to store selection)
-with _ab4:
-    st.markdown('<div class="action-bar-quit">', unsafe_allow_html=True)
-    if st.button("❌\nQuit", use_container_width=True, key="btn_quit"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+# Bottom action bar removed (integrated in header)
 
 # ---------------------------------------------------------------------------
 # Chat input

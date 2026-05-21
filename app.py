@@ -135,115 +135,59 @@ html, body, [class*="css"] {
   50% { opacity: 0.5; transform: scale(0.8); }
 }
 
-/* ── Chat scroll container ───────────────────────────────────────────────── */
-.chat-scroll {
-  padding: 16px 14px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 60vh;
-}
-
-/* ── Message bubbles ─────────────────────────────────────────────────────── */
-.msg-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  animation: slide-in .2s ease-out both;
-}
-
+/* ── Native st.chat_message() bubble overrides ──────────────────────────── */
 @keyframes slide-in {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.msg-row.user { flex-direction: row-reverse; }
-
-.msg-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  flex-shrink: 0;
+[data-testid="stChatMessage"] {
+  background: transparent !important;
+  border: none !important;
+  padding: 2px 12px !important;
+  animation: slide-in .2s ease-out both;
 }
 
-.msg-avatar.bot-av {
-  background: linear-gradient(135deg, var(--accent) 0%, #ea580c 100%);
-  box-shadow: 0 2px 10px var(--accent-glow);
+[data-testid="stChatMessageContent"] {
+  border-radius: var(--radius) !important;
+  font-size: 14px !important;
+  line-height: 1.55 !important;
+  padding: 12px 16px !important;
+  word-wrap: break-word !important;
 }
 
-.msg-avatar.user-av {
-  background: linear-gradient(135deg, #1e3a5f 0%, #1a4a7a 100%);
+/* Bot bubble */
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) [data-testid="stChatMessageContent"] {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  border-bottom-left-radius: 4px !important;
+  color: var(--text-primary) !important;
 }
 
-.msg-bubble {
-  max-width: 82%;
-  padding: 12px 16px;
-  border-radius: var(--radius);
-  font-size: 14px;
-  line-height: 1.55;
-  word-wrap: break-word;
-  position: relative;
+/* User bubble */
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) [data-testid="stChatMessageContent"] {
+  background: linear-gradient(135deg, #1e3a5f 0%, #1a4a7a 100%) !important;
+  border-bottom-right-radius: 4px !important;
+  color: #ddeeff !important;
 }
 
-.msg-bubble.bot {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
-  color: var(--text-primary);
+/* Bot avatar */
+[data-testid="chatAvatarIcon-assistant"] {
+  background: linear-gradient(135deg, var(--accent) 0%, #ea580c 100%) !important;
+  box-shadow: 0 2px 10px var(--accent-glow) !important;
+  border-radius: 50% !important;
 }
 
-.msg-bubble.user {
-  background: linear-gradient(135deg, #1e3a5f 0%, #1a4a7a 100%);
-  border-bottom-right-radius: 4px;
-  color: #ddeeff;
-}
-
-.msg-bubble.blocked {
-  background: linear-gradient(135deg, rgba(244,63,94,.15) 0%, rgba(244,63,94,.08) 100%);
-  border: 1px solid rgba(244,63,94,.3);
-  color: #fda4af;
+/* User avatar */
+[data-testid="chatAvatarIcon-user"] {
+  background: linear-gradient(135deg, #1e3a5f 0%, #1a4a7a 100%) !important;
+  border-radius: 50% !important;
 }
 
 .msg-time {
   font-size: 10px;
   color: var(--text-muted);
-  margin-top: 4px;
-  padding: 0 4px;
-}
-
-.msg-row.user .msg-time { text-align: right; }
-
-/* ── Typing indicator ────────────────────────────────────────────────────── */
-.typing-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-}
-
-.typing-dots {
-  display: flex;
-  gap: 4px;
-}
-
-.typing-dots span {
-  width: 7px;
-  height: 7px;
-  background: var(--accent);
-  border-radius: 50%;
-  animation: bounce 1.2s ease-in-out infinite;
-}
-
-.typing-dots span:nth-child(2) { animation-delay: .2s; }
-.typing-dots span:nth-child(3) { animation-delay: .4s; }
-
-@keyframes bounce {
-  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-  40%           { transform: translateY(-8px); opacity: 1; }
+  margin-top: 2px;
 }
 
 /* ── RAG badge ───────────────────────────────────────────────────────────── */
@@ -575,53 +519,29 @@ if not st.session_state.messages:
 # Render conversation history
 # ---------------------------------------------------------------------------
 
-st.markdown('<div class="chat-scroll">', unsafe_allow_html=True)
-
 for i, msg in enumerate(st.session_state.messages):
-    is_user = msg["role"] == "user"
-    is_blocked = msg.get("blocked", False)
-    ts = msg.get("timestamp", "")
+    role = msg["role"]
+    avatar = "👤" if role == "user" else "🤖"
+    
+    with st.chat_message(role, avatar=avatar):
+        # RAG grounding badge above bot responses
+        if role == "assistant" and i in st.session_state.rag_hits:
+            st.markdown(
+                f'<div class="rag-badge">📚 KB: {st.session_state.rag_hits[i]}</div>',
+                unsafe_allow_html=True,
+            )
 
-    avatar_html = (
-        '<div class="msg-avatar user-av">👤</div>'
-        if is_user
-        else '<div class="msg-avatar bot-av">🤖</div>'
-    )
+        if msg.get("blocked", False):
+            st.markdown(
+                f'<div style="color:#fda4af;border-left:3px solid #f43f5e;'
+                f'padding-left:10px;">{msg["content"]}</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(msg["content"])
 
-    bubble_class = "user" if is_user else ("blocked" if is_blocked else "bot")
-    row_class = "user" if is_user else "bot"
+        st.markdown(f'<div class="msg-time">{msg.get("timestamp", "")}</div>', unsafe_allow_html=True)
 
-    # RAG badge
-    rag_badge = ""
-    if not is_user and i in st.session_state.rag_hits:
-        rag_badge = (
-            f'<div class="rag-badge">📚 KB: {st.session_state.rag_hits[i]}</div>'
-        )
-
-    # Render text via st.markdown inside a styled container
-    with st.container():
-        st.markdown(
-            f"""
-            <div class="msg-row {row_class}">
-              {avatar_html}
-              <div>
-                {rag_badge}
-                <div class="msg-bubble {bubble_class}">
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown(msg["content"])
-        st.markdown(
-            f"""
-                </div>
-                <div class="msg-time">{ts}</div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Chat input
@@ -675,12 +595,9 @@ if user_input := st.chat_input(
         rag_title = playbook["title"]
 
     # --- Layer 4: LLM call (streaming) -------------------------------------
-    # ChipLLMClient is lightweight; the underlying genai.Client is process-cached
-    # via @st.cache_resource in llm_client.py — no new connection is created here.
     client = ChipLLMClient()
 
-    # Placeholder for the streaming response
-    with st.spinner(""):
+    with st.chat_message("assistant", avatar="🤖"):
         full_response = ""
         response_placeholder = st.empty()
 
@@ -690,14 +607,9 @@ if user_input := st.chat_input(
                 rag_context=rag_context,
             ):
                 full_response += chunk
-                response_placeholder.markdown(
-                    f'<div class="msg-bubble bot" style="max-width:100%;padding:12px 16px;">'
-                    f"{full_response}▌"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
+                response_placeholder.markdown(f"{full_response}▌")
 
-            response_placeholder.empty()
+            response_placeholder.markdown(full_response)
 
         except Exception as exc:
             full_response = (

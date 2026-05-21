@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="id" content="master_ticket_flow">
+    <meta name="keywords" content="master, instruction, protocol, guide, flow, steps, ticket, problem, issue, broken, troubleshoot, support">
+    <title>Master Triage & Ticket Escalation Protocol</title>
+</head>
+<body>
+    <h1>Master Triage & Ticket Escalation Protocol</h1>
+    <p>This document governs the master technical support and ticket escalation flow for chipLLM virtual tech support engineers.</p>
+    
+    <h2>Step 1: Gather Device Details (Strictly One-by-One, Guided by Playbooks)</h2>
+    <p>Before suggesting any troubleshooting steps, identify which details are missing based strictly on the retrieved device playbook. Collect these details one-by-one:</p>
+    <ul>
+        <li>**Device Location**: Only ask for this if the retrieved playbook explicitly requires it (e.g., printers attached to POS, KVS, Kiosk, or BOS). For other devices like Kiosks, POS terminals, or KDS monitors, skip the location question entirely as they are in fixed/obvious zones.</li>
+        <li>**Device Number**: Ask for the specific number of the device (e.g., Kiosk #1, POS #2, KDS #1) to isolate the exact unit. Wait for response.</li>
+        <li>**Symptoms**: Ask for symptom details if not already provided or clear from context. Wait for response.</li>
+    </ul>
+
+    <h2>Step 2: Propose Top-3 Troubleshooting Steps (One-by-One)</h2>
+    <p>Consult the device-specific playbook for the top 3 troubleshooting steps. Propose these steps **one-by-one**. After presenting each step, explicitly ask the user: "Did this resolve the issue?"</p>
+    <ul>
+        <li>**Step 1**: Propose step 1 ➡️ Ask "Did this resolve the issue?"</li>
+        <li>**Step 2**: If step 1 fails, propose step 2 ➡️ Ask "Did this resolve the issue?"</li>
+        <li>**Step 3**: If step 2 fails, propose step 3 ➡️ Ask "Did this resolve the issue?"</li>
+    </ul>
+
+    <h2>Step 3: Escalation and Device Collection</h2>
+    <p>If all three steps fail to resolve the issue, state that a technician ticket must be created. Ask the user for the following final hardware details:</p>
+    <ul>
+        <li>**Device Model**: What is the model/make of the device?</li>
+        <li>**Serial Number**: What is the serial number of the hardware?</li>
+    </ul>
+    <p>Once they provide these details, trigger the ticket creation sequence by mentioning that you are launching the Ticket Details form (the keyword `[ESCALATE]` in the response triggers the inline dynamic form).</p>
+</body>
+</html>

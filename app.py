@@ -20,8 +20,8 @@ from llm_client import ChipLLMClient, extract_ticket_metadata
 # Store authentication config
 # ---------------------------------------------------------------------------
 
-DEFAULT_STORE      = "67067"          # pre-loaded store for this session
-AUTHORIZED_STORES  = {"67067", "67068"}  # stores this user may access
+DEFAULT_STORE  = "67067"               # pre-selected default
+STORE_OPTIONS  = ["67067", "67068", "67069"]  # all authorized stores
 
 # ---------------------------------------------------------------------------
 # Page config – must be the very first Streamlit call
@@ -335,6 +335,65 @@ html, body, [class*="css"] {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(249,115,22,.3); border-radius: 4px; }
 
+/* ── Bottom action bar ────────────────────────────────────────────────────────────── */
+.action-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 6px;
+  padding: 8px 14px 4px;
+}
+
+.action-bar .stButton > button {
+  background: rgba(255,255,255,.05) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  color: #8892a4 !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  padding: 7px 4px !important;
+  min-height: 40px !important;
+  border-radius: 10px !important;
+  line-height: 1.3 !important;
+  letter-spacing: .2px !important;
+  transition: background .15s, border-color .15s, color .15s !important;
+}
+
+.action-bar .stButton > button:hover {
+  background: rgba(249,115,22,.12) !important;
+  border-color: rgba(249,115,22,.4) !important;
+  color: #f97316 !important;
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+/* ticket button — subtle warm tint */
+.action-bar-ticket .stButton > button {
+  border-color: rgba(249,115,22,.3) !important;
+  color: #fb923c !important;
+}
+
+/* agent button — subtle teal tint */
+.action-bar-agent .stButton > button {
+  border-color: rgba(34,211,160,.25) !important;
+  color: #22d3a0 !important;
+}
+
+/* quit button — subtle red tint */
+.action-bar-quit .stButton > button {
+  border-color: rgba(244,63,94,.25) !important;
+  color: #f43f5e !important;
+}
+
+/* Streamlit selectbox in auth card */
+[data-testid="stSelectbox"] > div > div {
+  background: #1a1d28 !important;
+  border: 1px solid rgba(249,115,22,.35) !important;
+  border-radius: 12px !important;
+  color: #f0f2f8 !important;
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  min-height: 52px !important;
+}
+
 /* ── Hide Streamlit chrome ───────────────────────────────────────────────── */
 #MainMenu, header[data-testid="stHeader"], footer { display: none !important; }
 .viewerBadge_container__1QSob { display: none !important; }
@@ -364,11 +423,6 @@ if "store_confirmed" not in st.session_state:
     st.session_state.store_confirmed = False
 if "active_store" not in st.session_state:
     st.session_state.active_store = DEFAULT_STORE
-if "auth_step" not in st.session_state:
-    # 'confirm_default' | 'unauthorized_fallback'
-    st.session_state.auth_step = "confirm_default"
-if "unauthorized_attempt" not in st.session_state:
-    st.session_state.unauthorized_attempt = ""
 
 
 # ---------------------------------------------------------------------------
@@ -383,7 +437,7 @@ def _confirm_store(store: str) -> None:
 if not st.session_state.store_confirmed:
 
     st.markdown(
-        f"""
+        """
         <div style='max-width:420px;margin:60px auto 0;padding:32px 28px;
                     background:#14171f;border:1px solid rgba(255,255,255,.08);
                     border-radius:20px;box-shadow:0 12px 40px rgba(0,0,0,.55);'>
@@ -393,91 +447,30 @@ if not st.session_state.store_confirmed:
             <div style='font-size:18px;font-weight:700;color:#f0f2f8;letter-spacing:-.3px;'>Store Verification</div>
             <div style='font-size:12px;color:#8892a4;margin-top:4px;'>chipLLM · Secure Access</div>
           </div>
+
+          <div style='font-size:11px;color:#8892a4;text-transform:uppercase;
+                      letter-spacing:.8px;margin-bottom:10px;'>Select your store</div>
         """,
         unsafe_allow_html=True,
     )
 
-    if st.session_state.auth_step == "confirm_default":
-        st.markdown(
-            f"""
-            <div style='background:#1a1d28;border:1px solid rgba(249,115,22,.3);
-                        border-radius:14px;padding:18px 20px;margin-bottom:20px;'>
-              <div style='font-size:11px;color:#8892a4;text-transform:uppercase;
-                          letter-spacing:.8px;margin-bottom:6px;'>Detected Store</div>
-              <div style='font-size:26px;font-weight:700;color:#f97316;
-                          letter-spacing:-1px;'>#{DEFAULT_STORE}</div>
-            </div>
-            <div style='font-size:13px;color:#8892a4;margin-bottom:20px;text-align:center;'>
-              Is this the store you're requesting support for?
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    selected_store = st.selectbox(
+        "Select your store",
+        options=STORE_OPTIONS,
+        index=STORE_OPTIONS.index(DEFAULT_STORE),
+        label_visibility="collapsed",
+        key="store_select",
+    )
 
-        if st.button("\u2705  Yes, that's my store", use_container_width=True, key="auth_yes"):
-            _confirm_store(DEFAULT_STORE)
-            st.rerun()
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-        st.markdown(
-            "<div style='text-align:center;font-size:11px;color:#8892a4;margin:16px 0 8px;'"
-            ">or enter a different store number</div>",
-            unsafe_allow_html=True,
-        )
-
-        with st.form(key="auth_form", clear_on_submit=True):
-            alt = st.text_input(
-                "Store number",
-                placeholder="e.g. 67068",
-                label_visibility="collapsed",
-            )
-            submitted = st.form_submit_button("Submit", use_container_width=True)
-
-        if submitted:
-            stripped = alt.strip()
-            if not stripped or not stripped.isdigit():
-                # Non-numeric or empty → silently proceed with default
-                _confirm_store(DEFAULT_STORE)
-            elif stripped in AUTHORIZED_STORES:
-                _confirm_store(stripped)
-            else:
-                st.session_state.unauthorized_attempt = stripped
-                st.session_state.auth_step = "unauthorized_fallback"
-            st.rerun()
-
-    elif st.session_state.auth_step == "unauthorized_fallback":
-        bad_store = st.session_state.unauthorized_attempt
-        st.markdown(
-            f"""
-            <div style='background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.35);
-                        border-radius:14px;padding:18px 20px;margin-bottom:20px;text-align:center;'>
-              <div style='font-size:22px;margin-bottom:8px;'>\u26d4</div>
-              <div style='font-size:14px;font-weight:600;color:#fda4af;margin-bottom:6px;'>
-                Not Authorized
-              </div>
-              <div style='font-size:12px;color:#8892a4;line-height:1.6;'>
-                You are not authorized on<br>
-                <strong style='color:#f0f2f8;'>Store #{bad_store}</strong>.
-              </div>
-            </div>
-            <div style='font-size:13px;color:#8892a4;margin-bottom:20px;text-align:center;'>
-              Would you like to proceed with your assigned store?
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        if st.button(
-            f"\u2705  Yes, proceed with Store #{DEFAULT_STORE}",
-            use_container_width=True,
-            key="auth_fallback_yes",
-        ):
-            _confirm_store(DEFAULT_STORE)
-            st.rerun()
-
-        if st.button("\u2190  Try a different number", use_container_width=True, key="auth_back"):
-            st.session_state.auth_step = "confirm_default"
-            st.session_state.unauthorized_attempt = ""
-            st.rerun()
+    if st.button(
+        f"✅  Confirm Store #{selected_store}",
+        use_container_width=True,
+        key="auth_confirm",
+    ):
+        _confirm_store(selected_store)
+        st.rerun()
 
     # Close the card div
     st.markdown("</div>", unsafe_allow_html=True)
@@ -683,11 +676,76 @@ for i, msg in enumerate(st.session_state.messages):
 
 
 # ---------------------------------------------------------------------------
+# Bottom action bar
+# ---------------------------------------------------------------------------
+
+st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+_ts = time.strftime("%H:%M")
+_ab1, _ab2, _ab3, _ab4 = st.columns(4, gap="small")
+
+with _ab1:
+    st.markdown('<div class="action-bar-ticket">', unsafe_allow_html=True)
+    if st.button("🎫\nOpen a\nTicket Now", use_container_width=True, key="btn_ticket"):
+        meta = extract_ticket_metadata(st.session_state.messages)
+        meta["store_id"] = f"STORE-{st.session_state.active_store}"
+        st.session_state.ticket_metadata = meta
+        st.session_state.escalation_triggered = True
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": (
+                f"🎫 **Ticket opened** for Store #{st.session_state.active_store}.\n\n"
+                f"Ticket ID: `{meta['ticket_id']}`  \nSeverity: **{meta['severity']}**\n\n"
+                "Your ticket has been submitted. A technician will follow up within the SLA window."
+            ),
+            "timestamp": _ts, "blocked": False,
+        })
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with _ab2:
+    st.markdown('<div class="action-bar-agent">', unsafe_allow_html=True)
+    if st.button("🧑‍💻\nLive\nAgent", use_container_width=True, key="btn_agent"):
+        meta = extract_ticket_metadata(st.session_state.messages)
+        meta["store_id"] = f"STORE-{st.session_state.active_store}"
+        meta["routing_target"] = "GENESYS_TIER1_PRIORITY"
+        meta["auto_dispatch"] = True
+        st.session_state.ticket_metadata = meta
+        st.session_state.escalation_triggered = True
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": "🧑\u200d💻 **Connecting you to a live agent...**\n\n"
+                       f"Your session for Store #{st.session_state.active_store} has been escalated to **Tier 1 Support**. "
+                       "An agent will join this chat shortly. Please stay on the line.",
+            "timestamp": _ts, "blocked": False,
+        })
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Col 3 — Start Over
+with st.container():
+    if st.button("🔄\nStart\nOver", use_container_width=True, key="btn_restart"):
+        st.session_state.messages = []
+        st.session_state.ticket_metadata = None
+        st.session_state.escalation_triggered = False
+        st.session_state.rag_hits = {}
+        st.rerun()
+
+# Col 4 — Quit (returns to store selection)
+with _ab4:
+    st.markdown('<div class="action-bar-quit">', unsafe_allow_html=True)
+    if st.button("❌\nQuit", use_container_width=True, key="btn_quit"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
 # Chat input
 # ---------------------------------------------------------------------------
 
 if user_input := st.chat_input(
-    placeholder="Describe the issue… (e.g. 'Printer jammed, Store 4421')",
+    placeholder="Describe the issue… (e.g. 'Printer jammed')",
     key="chat_input",
 ):
     ts_now = time.strftime("%H:%M")

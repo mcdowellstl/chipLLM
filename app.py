@@ -926,6 +926,49 @@ def check_escalation_intent(user_input: str) -> bool:
     return any(kw in lower_input for kw in keywords)
 
 
+def parse_comment_update_intent(text: str) -> tuple[str, str] | None:
+    """
+    Parses conversational user intent to add a note/comment to a ticket.
+    Returns (ticket_id, comment_text) if matched, otherwise None.
+    """
+    import re
+    if not text:
+        return None
+    text_clean = text.strip()
+    
+    # 1. Match the prefix including verb and ticket ID
+    # Verbs: add a note/comment to/on, update, comment on
+    prefix_pattern = r"(?i)^(?:add\s+(?:a\s+)?(?:note|comment)\s+(?:to|on)|update|comment\s+on)\s+(INC[-_]?\d+)"
+    match = re.match(prefix_pattern, text_clean)
+    if not match:
+        return None
+        
+    ticket_id = match.group(1).upper()
+    # The remaining text after the ticket ID prefix
+    remaining = text_clean[match.end():].strip()
+    
+    # 2. Repeatedly strip transition elements from the start of remaining text
+    # Elements: spaces, colons, commas, semicolons, quotes, saying, stating, that, with (a) note/comment, to say, etc.
+    while True:
+        prev_len = len(remaining)
+        # Strip leading punctuation/whitespace
+        remaining = re.sub(r'^(?:[\s:;,"\'\-\(\)]+)', '', remaining)
+        # Strip leading transition words
+        remaining = re.sub(r'(?i)^(?:saying|stating|that|with\s+(?:a\s+)?(?:note|comment)?(?:\s+saying)?|to\s+say|say)\b', '', remaining)
+        # Strip any new leading punctuation/whitespace that resulted
+        remaining = re.sub(r'^(?:[\s:;,"\'\-\(\)]+)', '', remaining)
+        if len(remaining) == prev_len:
+            break
+            
+    # Clean up trailing quotes/punctuation
+    remaining = re.sub(r'["\'\s\.]+$', '', remaining).strip()
+    
+    if ticket_id and remaining:
+        return ticket_id, remaining
+        
+    return None
+
+
 def package_conversational_context() -> None:
     """
     Mock utility that packages and prints the current conversational context
@@ -2631,8 +2674,57 @@ if user_input:
     if check_escalation_intent(user_input):
         trigger_live_agent_flow(user_input)
     
+    # Intercept comment updates
+    comment_match = parse_comment_update_intent(user_input)
+    if comment_match:
+        ticket_id, comment_text = comment_match
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_input,
+            "timestamp": ts_now,
+            "blocked": False
+        })
+        
+        # Search for target ticket
+        found_ticket = None
+        normalized_target = ticket_id.replace("-", "").replace("_", "").upper()
+        active_tickets = st.session_state.get("active_tickets", [])
+        for ticket in active_tickets:
+            tid = ticket.get("id", "")
+            normalized_tid = tid.replace("-", "").replace("_", "").upper()
+            if normalized_tid == normalized_target:
+                found_ticket = ticket
+                break
+                
+        if found_ticket:
+            timestamp_str = time.strftime("%Y-%m-%d %H:%M:%S")
+            if "comments" not in found_ticket:
+                found_ticket["comments"] = []
+            found_ticket["comments"].append({
+                "timestamp": timestamp_str,
+                "author": "Manager Jim",
+                "text": comment_text
+            })
+            st.session_state.active_tickets = active_tickets
+            
+            confirm_msg = f"Got it, I've added that note to case {found_ticket.get('id', ticket_id)} for you."
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": confirm_msg,
+                "timestamp": ts_now,
+                "blocked": False
+            })
+        else:
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": f"I parsed your request to add a note to **{ticket_id}**, but I couldn't find a matching active ticket with that ID in store #{st.session_state.get('active_store', 'Unknown')}. Please check the ticket number and try again.",
+                "timestamp": ts_now,
+                "blocked": False
+            })
+        st.rerun()
+
     # Intercept commands like "start over"
-    if "start over" in lower_input or "restart" in lower_input:
+    elif "start over" in lower_input or "restart" in lower_input:
         st.session_state.messages = []
         st.session_state.ticket_metadata = None
         st.session_state.escalation_triggered = False

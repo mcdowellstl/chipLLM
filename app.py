@@ -1661,8 +1661,8 @@ def _reformat_case_detail_view(content: str) -> str:
         if line_bare not in _CLOSING_LINES:
             result_parts.append(line)
 
-    # Always append canonical closing as a single block (\n between the two lines,
-    # \n\n will be added by the join below to separate it from the last comment)
+    # Insert a markdown hr divider before the closing block so the UI can't collapse the gap
+    result_parts.append("---")
     result_parts.append(_CANONICAL_CLOSING)
 
     # Join with exactly \n\n between every element

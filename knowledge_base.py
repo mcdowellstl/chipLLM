@@ -229,6 +229,58 @@ FALLBACK_PLAYBOOKS: list[dict] = [
 `severity: high | asset_type: KIOSK | sla: 1h`
 """,
     },
+    {
+        "id": "DRIVETHRU_BOARD_DAMAGE",
+        "keywords": [
+            "drive thru", "drive-thru", "drive through", "drivethrough",
+            "menu board", "menuboard", "outdoor board", "outdoor sign",
+            "digital sign", "digital signage", "outdoor display",
+            "sign", "signage", "outdoor menu",
+            "crashed into", "car crashed", "vehicle hit", "hit the sign",
+            "hit the board", "damaged sign", "damaged board", "knocked over",
+            "knocked down", "physical damage", "broken sign", "broken board",
+            "drivethru board", "drive-thru board", "outdoor kiosk",
+            "order board", "speaker post", "order speaker", "loop detector",
+            "drivethru display", "drivethru screen",
+        ],
+        "title": "Drive-Thru Menu Board / Outdoor Signage – Physical Damage & Recovery",
+        "content": """
+## Playbook: Drive-Thru Menu Board / Outdoor Signage – Physical Damage & Recovery
+**Asset Types:** Delphi Display Systems, HME Drive-Thru Board, Xenon Digital Menuboard, PAR Drive-Thru Display
+
+### Symptoms
+- Vehicle impact or physical collision with drive-thru board, speaker post, or order station
+- Board not powering on / blank / partial display after physical damage
+- Outdoor display shows image artifacts, cracked panel, or no signal
+- Speaker post or order station tilted, uprooted, or structurally compromised
+- Loop detector (in-ground car sensor) not registering vehicles
+
+### Immediate Response (Safety First)
+1. **Secure the area:** If the post is leaning or unstable, place traffic cones and do NOT attempt to operate drive-thru lane until secured.
+2. **Document the damage:** Take photos of the board, post, and surrounding area for the insurance and vendor claim.
+3. **Power down:** Locate the outdoor equipment circuit breaker (typically in the back-of-house electrical panel, labeled "DT BOARD" or "MENUBOARD") and switch it OFF to prevent electrical hazard from a damaged unit.
+
+### Power & Display Check (if unit appears structurally intact)
+1. **Inspect power cable** at the base of the post for cuts or exposed wiring. Do NOT touch exposed wiring—call an electrician if found.
+2. **Power cycle from breaker:** Off for 30 seconds, then back on. Wait 2 minutes for the board controller to boot.
+3. **Check signal cable:** HDMI/RS-422 cable connecting the board controller box (usually inside the restaurant) to the outdoor display. Reseat both ends.
+4. **Controller box:** Located inside at the drive-thru station or manager's office. Check for solid power LED. If blinking red, the board detected a hardware fault — note the blink code and escalate.
+
+### Software / Connectivity
+- **No content showing (blank board, power OK):** Log into the menuboard management software (Xenon Portal / HME Cloud / Delphi Connect) and push a content refresh.
+- **Board offline in management portal:** Verify the LAN/cellular connection on the controller box. Check the SIM card or ethernet run from store router to the outdoor cabinet.
+- **Wrong content / outdated pricing:** Menuboard CMS is typically managed by the marketing team — escalate a content sync request through your regional contact.
+
+### Escalation Criteria
+- Any structural damage to the post → **Field hardware vendor dispatch required** — do not attempt repair
+- Exposed electrical wiring → **Call licensed electrician before powering on**
+- Board controller shows fault blink code → Escalate to drive-thru vendor support with the blink count
+- Damage caused by third party (vehicle) → Ensure an incident report is filed with the store manager and escalate to facilities
+
+### Metadata Tags
+`severity: high | asset_type: DRIVETHRU_BOARD | sla: 4h`
+""",
+    },
 ]
 
 

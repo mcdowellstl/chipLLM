@@ -9,10 +9,21 @@ from __future__ import annotations
 
 import json
 import time
+import logging
+import sys
+
+# Force configure logging to write to sys.stdout with a clear custom format
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+    force=True
+)
+logger = logging.getLogger("chipLLM")
 
 import streamlit as st
 
-from guardrails import check_guardrails
+from guardrails import check_guardrails, is_greeting_or_small_talk, is_cafe_issue
 from knowledge_base import retrieve_context
 from llm_client import ChipLLMClient, extract_ticket_metadata
 
@@ -33,7 +44,7 @@ STORE_OPTIONS  = ["67067", "67068", "67069"]  # all authorized stores
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="chipLLM · Restaurant Tech Support",
+    page_title="Chip · Restaurant Tech Support",
     page_icon="🍔",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -478,6 +489,42 @@ div.chips-sentinel + div[data-testid="stHorizontalBlock"] button:hover {
 # Session state initialization
 # ---------------------------------------------------------------------------
 
+if st.session_state.get("needs_reset", False):
+    st.session_state.needs_reset = False
+    st.session_state.messages = []
+    st.session_state.ticket_metadata = None
+    st.session_state.escalation_triggered = False
+    st.session_state.rag_hits = {}
+    st.session_state.ticket_collection_active = False
+    st.session_state.manual_ticket_flow = False
+    st.session_state.show_restart_chat_btn = False
+    st.session_state.escalation_triage_active = False
+    st.session_state.escalation_triage_step = None
+    st.session_state.triage_model = None
+    st.session_state.triage_serial = None
+    st.session_state.triage_q1 = None
+    st.session_state.triage_q2 = None
+    st.session_state.triage_q3 = None
+    st.session_state.triage_priority = None
+    st.session_state.current_triage = {}
+    st.session_state.escalated = False
+    st.session_state.escalation_stage = None
+    st.session_state.live_agent_chat_turns = 0
+    st.session_state.live_agent_pending_connection = False
+    st.session_state.live_agent_pending_question = False
+    
+    # Also delete widget key states directly so they are completely fresh on reload
+    widget_keys = [
+        "ticket_extra_info", "ticket_manual_short_desc", "ticket_manual_desc", 
+        "ticket_name", "ticket_phone", "ticket_backup_name", "ticket_backup_phone",
+        "priority_form_q1", "priority_form_q2", "priority_form_q3", 
+        "device_form_model_input", "device_form_serial_input",
+        "escalation_user_notes_input", "escalation_image_upload", "ticket_image_upload"
+    ]
+    for key in widget_keys:
+        if key in st.session_state:
+            del st.session_state[key]
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -495,6 +542,15 @@ if "store_confirmed" not in st.session_state:
     st.session_state.store_confirmed = True
 if "active_store" not in st.session_state:
     st.session_state.active_store = DEFAULT_STORE
+    logger.info("Session initialized. Default store set to %s.", st.session_state.active_store)
+if "active_tickets" not in st.session_state:
+    from mocks.servicenow import get_store_tickets
+    st.session_state.active_tickets = get_store_tickets(st.session_state.active_store)
+    logger.info("Loaded default store tickets: %d tickets.", len(st.session_state.active_tickets))
+if "active_mims" not in st.session_state:
+    from mocks.servicenow import get_store_mims
+    st.session_state.active_mims = get_store_mims(st.session_state.active_store)
+    logger.info("Loaded default store MIMs: %d MIMs.", len(st.session_state.active_mims))
 if "ticket_collection_active" not in st.session_state:
     st.session_state.ticket_collection_active = False
 if "ticket_collection_is_agent" not in st.session_state:
@@ -502,6 +558,22 @@ if "ticket_collection_is_agent" not in st.session_state:
 
 if "live_agent_pending_connection" not in st.session_state:
     st.session_state.live_agent_pending_connection = False
+
+if "live_agent_name" not in st.session_state:
+    import random
+    st.session_state.live_agent_name = random.choice(["Alex", "Taylor", "Jordan", "Morgan", "Casey", "Robin", "Pat", "Jamie", "Sam", "Chris"])
+
+if "live_agent_chat_turns" not in st.session_state:
+    st.session_state.live_agent_chat_turns = 0
+
+if "escalated" not in st.session_state:
+    st.session_state.escalated = False
+
+if "escalation_stage" not in st.session_state:
+    st.session_state.escalation_stage = None
+
+if "current_triage" not in st.session_state:
+    st.session_state.current_triage = {}
 
 if "escalation_triage_active" not in st.session_state:
     st.session_state.escalation_triage_active = False
@@ -521,6 +593,154 @@ if "triage_priority" not in st.session_state:
     st.session_state.triage_priority = None
 if "show_restart_chat_btn" not in st.session_state:
     st.session_state.show_restart_chat_btn = False
+
+def file_to_base64_data_url(uploaded_file) -> str | None:
+    """Converts a Streamlit uploaded file into a Base64 data URL."""
+    if uploaded_file is None:
+        return None
+    import base64
+    try:
+        file_bytes = uploaded_file.read()
+        # Reset pointer in case it needs to be read again
+        uploaded_file.seek(0)
+        encoded = base64.b64encode(file_bytes).decode("utf-8")
+        mime_type = uploaded_file.type if uploaded_file.type else "image/png"
+        return f"data:{mime_type};base64,{encoded}"
+    except Exception as e:
+        logger.exception("Failed to convert file to base64 data URL")
+        return None
+
+# ---------------------------------------------------------------------------
+# Automatic Triage Synchronization
+# ---------------------------------------------------------------------------
+
+def sync_triage_from_messages() -> None:
+    """
+    Parses conversation history on every rerun to sync conversational triage fields
+    into st.session_state.current_triage without overwriting explicit form fields.
+    """
+    import re
+    if "current_triage" not in st.session_state:
+        st.session_state.current_triage = {}
+        
+    messages = st.session_state.get("messages", [])
+    if not messages:
+        return
+
+    # Check if we need to call AI to generate/update the issue description
+    user_msgs = [m["content"] for m in messages if m["role"] == "user"]
+    if user_msgs:
+        last_count = st.session_state.get("last_message_count_for_ai_desc", -1)
+        if len(messages) != last_count or "ai_issue_description" not in st.session_state:
+            try:
+                client = ChipLLMClient()
+                desc = client.generate_issue_description(messages)
+                st.session_state.ai_issue_description = desc
+                st.session_state.last_message_count_for_ai_desc = len(messages)
+            except Exception as e:
+                logger.exception("Failed to generate AI issue description")
+                if "ai_issue_description" not in st.session_state:
+                    st.session_state.ai_issue_description = "Unknown"
+    else:
+        st.session_state.ai_issue_description = "Unknown"
+        
+    summary_dict = {}
+    
+    # Process message history pairs
+    for i in range(len(messages) - 1):
+        msg = messages[i]
+        next_msg = messages[i+1]
+        if msg["role"] == "assistant" and next_msg["role"] == "user":
+            q_content = msg["content"].lower()
+            ans_clean = next_msg["content"].replace("**", "").replace("`", "").strip()
+            
+            # 1. Type detection
+            if any(kw in q_content for kw in ["where is the printer", "printer located", "location", "what type", "which type"]):
+                t_val = "POS"
+                if "kvs" in ans_clean.lower() or "kitchen" in ans_clean.lower():
+                    t_val = "KVS"
+                elif "kiosk" in ans_clean.lower():
+                    t_val = "Kiosk"
+                elif "bos" in ans_clean.lower() or "back office" in ans_clean.lower():
+                    t_val = "BOS"
+                elif any(dt_kw in ans_clean.lower() for dt_kw in ["drive through", "drive-thru", "dt"]):
+                    t_val = "Drive-Thru"
+                summary_dict["Device Type"] = t_val
+                
+            # 2. Number detection
+            elif any(kw in q_content for kw in ["which pos number", "which device number", "which kiosk number", "which unit", "device number", "unit number"]):
+                current_type = summary_dict.get("Device Type", "Unknown")
+                num_only = re.sub(r"\D", "", ans_clean)
+                if num_only:
+                    if current_type != "Unknown":
+                        summary_dict["Asset Number"] = f"{current_type}{num_only}"
+                    else:
+                        summary_dict["Asset Number"] = num_only
+                else:
+                    summary_dict["Asset Number"] = ans_clean
+                    
+            # 3. What is the issue
+            elif any(kw in q_content for kw in ["describe the issue", "what is the issue", "what symptom", "experiencing"]):
+                summary_dict["Issue Description"] = ans_clean.capitalize()
+                
+            # 4. Is there visible paper
+            elif "visible paper" in q_content:
+                summary_dict["Is there visible paper"] = ans_clean.capitalize()
+                
+            # 5. Internal Jam Roller C
+            elif any(kw in q_content for kw in ["internal jam roller", "roller c", "roller"]):
+                summary_dict["Internal Jam Roller C"] = f"{ans_clean.capitalize()} — not resolved" if ans_clean.lower() == "no" else ans_clean
+                
+            # 7. Are you OTP
+            elif "otp" in q_content:
+                summary_dict["Are you OTP or OTP cer"] = ans_clean.capitalize()
+
+    # Seed the "Issue Description" with the AI-generated description
+    if "Issue Description" not in summary_dict or summary_dict["Issue Description"] == "Unknown":
+        summary_dict["Issue Description"] = st.session_state.get("ai_issue_description", "Unknown")
+
+    # Pre-populate Device Type and Asset Number based strictly on USER messages to avoid assistant prompts polluting the parsing
+    user_msgs = [m["content"] for m in messages if m["role"] == "user"]
+    user_text = " ".join(user_msgs).lower()
+    
+    if "Device Type" not in summary_dict:
+        if "kiosk" in user_text:
+            summary_dict["Device Type"] = "Kiosk"
+        elif "kvs" in user_text or "kitchen" in user_text:
+            summary_dict["Device Type"] = "KVS"
+        elif any(dt_kw in user_text for dt_kw in ["drive through", "drive-thru", "dt"]):
+            summary_dict["Device Type"] = "Drive-Thru"
+        elif "pos" in user_text or "register" in user_text:
+            summary_dict["Device Type"] = "POS"
+        elif "bos" in user_text or "back office" in user_text:
+            summary_dict["Device Type"] = "BOS"
+        else:
+            summary_dict["Device Type"] = "Unknown"
+            
+    if "Asset Number" not in summary_dict:
+        num_match = re.search(r"\b(pos|kiosk|kds|kvs|unit)?\s*#?\s*(\d)\b", user_text)
+        t = summary_dict.get("Device Type", "Unknown")
+        if num_match and t != "Unknown":
+            summary_dict["Asset Number"] = f"{t}{num_match.group(2)}"
+        else:
+            summary_dict["Asset Number"] = "Unknown"
+    else:
+        # Re-derive the Asset Number prefix from the now-resolved Device Type
+        # to handle cases where the number was captured before the type was known
+        t = summary_dict.get("Device Type", "Unknown")
+        if t != "Unknown":
+            asset_val = summary_dict["Asset Number"]
+            num_only = re.sub(r"\D", "", asset_val)
+            if num_only:
+                summary_dict["Asset Number"] = f"{t}{num_only}"
+        else:
+            summary_dict["Asset Number"] = "Unknown"
+
+    # Merge into current_triage without overwriting form fields if already present
+    for k, v in summary_dict.items():
+        st.session_state.current_triage[k] = v
+
+sync_triage_from_messages()
 
 def _is_printer_issue() -> bool:
     """Return True if the current session is about a printer."""
@@ -561,10 +781,13 @@ def render_device_detail_form() -> None:
 
     if submitted:
         # Store whatever was entered (empty = unknown, we skip it)
-        if model_val.strip():
-            st.session_state.triage_model = model_val.strip()
-        if serial_val.strip():
-            st.session_state.triage_serial = serial_val.strip()
+        m_val = model_val.strip() if model_val.strip() else "Unknown"
+        s_val = serial_val.strip() if serial_val.strip() else "Unknown"
+        logger.info("Device detail form submitted. Model: %s, Serial: %s", m_val, s_val)
+        st.session_state.triage_model = m_val
+        st.session_state.triage_serial = s_val
+        st.session_state.current_triage["Device Model"] = m_val
+        st.session_state.current_triage["Serial Number"] = s_val
         # Finish triage
         st.session_state.escalation_triage_active = False
         st.session_state.escalation_triage_step = "complete"
@@ -628,11 +851,15 @@ def render_priority_form() -> None:
             st.session_state.triage_q1 = q1_val
             st.session_state.triage_q2 = q2_val
             st.session_state.triage_q3 = q3_val
+            st.session_state.current_triage["Stopping Orders/Payments"] = q1_val
+            st.session_state.current_triage["Only Device of its Kind"] = q2_val
+            st.session_state.current_triage["Other Devices Functional"] = q3_val
             calculate_priority_and_finish_triage()
             st.rerun()
 
 
 def start_escalation_triage(append_welcome: bool = True):
+    logger.info("Starting escalation triage flow. active_store: %s", st.session_state.active_store)
     st.session_state.escalation_triage_active = True
     st.session_state.triage_model = None
     st.session_state.triage_serial = None
@@ -641,15 +868,15 @@ def start_escalation_triage(append_welcome: bool = True):
     st.session_state.triage_q3 = None
     st.session_state.triage_priority = None
     st.session_state.manual_ticket_flow = False
-
+ 
     # All devices start with priority form step
     st.session_state.escalation_triage_step = "priority_form"
-
+ 
     ts_now = time.strftime("%H:%M")
     if append_welcome:
         notice = (
-            "Since these troubleshooting steps didn't resolve the issue, we need to escalate this and create a support ticket.\n\n"
-            "To help determine priority for this ticket, an embedded form will launch below. Please fill out the mandatory questions."
+            "Got it. Since those steps didn't do the trick, let's get you transferred over to a support engineer.\n\n"
+            "To help package up the exact priority and severity for this transfer queue, an embedded form will launch below. Please fill out the mandatory questions."
         )
         st.session_state.messages.append({
             "role": "assistant",
@@ -687,6 +914,73 @@ def start_escalation_triage(append_welcome: bool = True):
                     + "\n\nTo help determine priority for this ticket, an embedded form will launch below. Please fill out the mandatory questions."
                 )
 
+def check_escalation_intent(user_input: str) -> bool:
+    """
+    Checks if the user input implies an escalation to a human agent.
+    Matches variations of "talk to a human" or "live agent" case-insensitively.
+    """
+    if not user_input:
+        return False
+    lower_input = user_input.lower()
+    keywords = ["agent", "human", "representative", "person", "live chat", "operator", "help"]
+    return any(kw in lower_input for kw in keywords)
+
+
+def package_conversational_context() -> None:
+    """
+    Mock utility that packages and prints the current conversational context
+    and active store ID to the background terminal console for human queue handoff.
+    Exclusively consumes contact details, current_triage, and comments.
+    """
+    store_id = st.session_state.get("active_store", "Unknown")
+    
+    # Store addresses map
+    STORE_ADDRESSES = {
+        67067: {
+            "address": "1725 Slough Avenue, Scranton, PA 18503",
+            "location": "Scranton Restaurant"
+        },
+        67068: {
+            "address": "120 Paper Place, Scranton, PA 18508",
+            "location": "Scranton North Restaurant"
+        },
+        67069: {
+            "address": "420 Paper Mill Road, Scranton, PA 18512",
+            "location": "Scranton East Restaurant"
+        }
+    }
+    
+    store_info = STORE_ADDRESSES.get(int(store_id) if str(store_id).isdigit() else 67067, {
+        "address": "1725 Slough Avenue, Scranton, PA 18503",
+        "location": "Scranton Restaurant"
+    })
+    store_address = store_info["address"]
+    store_location = store_info["location"]
+    
+    name = st.session_state.get("ticket_name", "Jim Halpert")
+    phone = st.session_state.get("ticket_phone", "(570) 555-0142")
+    backup_name = st.session_state.get("ticket_backup_name", "").strip()
+    backup_phone = st.session_state.get("ticket_backup_phone", "").strip()
+    comments = st.session_state.get("ticket_extra_info", "").strip()
+    current_triage = st.session_state.get("current_triage", {})
+    
+    logger.info("📞 [HUMAN AGENT ESCALATION INTERCEPTED]")
+    logger.info("  Name: %s", name)
+    logger.info("  Store #: %s (%s)", store_id, store_location)
+    logger.info("  Address: %s", store_address)
+    logger.info("  Phone: %s", phone)
+    if backup_name or backup_phone:
+        logger.info("  Backup Contact: %s (Phone: %s)", backup_name or 'None', backup_phone or 'None')
+        
+    logger.info("  [Triage Details]")
+    for k, v in current_triage.items():
+        logger.info("    %s: %s", k, v)
+        
+    if comments:
+        logger.info("  [Additional Info / Comments]")
+        logger.info("    %s", comments)
+
+
 def reset_triage_state():
     st.session_state.escalation_triage_active = False
     st.session_state.escalation_triage_step = None
@@ -696,8 +990,10 @@ def reset_triage_state():
     st.session_state.triage_q2 = None
     st.session_state.triage_q3 = None
     st.session_state.triage_priority = None
-    if "ticket_extra_info" in st.session_state:
-        st.session_state.ticket_extra_info = ""
+    st.session_state.current_triage = {}
+    st.session_state.escalated = False
+    st.session_state.escalation_stage = None
+    st.session_state.pop("ticket_extra_info", None)
 
 def calculate_priority_and_finish_triage():
     q1 = st.session_state.get("triage_q1", "No")
@@ -726,6 +1022,8 @@ def calculate_priority_and_finish_triage():
                 priority = "P4"
                 
     st.session_state.triage_priority = priority
+    st.session_state.current_triage["Priority"] = priority
+    logger.info("Triage Priority Assessment completed. Q1: %s, Q2: %s, Q3: %s. Calculated priority: %s", q1, q2, q3, priority)
 
     st.session_state.escalation_triage_step = "device_form"
     ts_now = time.strftime("%H:%M")
@@ -779,6 +1077,8 @@ def get_diagnostic_summary() -> list[tuple[str, str]]:
                     t_val = "Kiosk"
                 elif "bos" in ans_clean.lower() or "back office" in ans_clean.lower():
                     t_val = "BOS"
+                elif any(dt_kw in ans_clean.lower() for dt_kw in ["drive through", "drive-thru", "dt"]):
+                    t_val = "Drive-Thru"
                 summary_dict["Type"] = t_val
                 
             # 2. Number detection
@@ -810,38 +1110,35 @@ def get_diagnostic_summary() -> list[tuple[str, str]]:
             elif "otp" in q_content:
                 summary_dict["Are you OTP or OTP cer"] = ans_clean.capitalize()
 
-    # If first user message exists, use it to seed "What is the issue"
-    if "What is the issue" not in summary_dict:
-        user_msgs = [m["content"] for m in messages if m["role"] == "user"]
-        if user_msgs:
-            first_msg = user_msgs[0].replace("**", "").replace("`", "").strip()
-            if len(first_msg) > 30:
-                first_msg = first_msg[:27] + "..."
-            summary_dict["What is the issue"] = first_msg.capitalize()
+    # Seed the "What is the issue" with the AI-generated description
+    if "What is the issue" not in summary_dict or summary_dict["What is the issue"] == "Unknown":
+        summary_dict["What is the issue"] = st.session_state.get("ai_issue_description", "Unknown")
 
-    # Pre-populate Type and Number if missing in summary_dict based on global message search
+    # Pre-populate Type and Number if missing in summary_dict based strictly on USER message search
     # to avoid default fallbacks overriding parsed user values across different fields
-    all_text = " ".join([m["content"] for m in messages]).lower()
+    user_msgs = [m["content"] for m in messages if m["role"] == "user"]
+    user_text = " ".join(user_msgs).lower()
+    
     if "Type" not in summary_dict:
-        if "kiosk" in all_text:
+        if "kiosk" in user_text:
             summary_dict["Type"] = "Kiosk"
-        elif "kvs" in all_text or "kitchen" in all_text:
+        elif "kvs" in user_text or "kitchen" in user_text:
             summary_dict["Type"] = "KVS"
-        else:
-            summary_dict["Type"] = "POS"
-            
+        elif any(dt_kw in user_text for dt_kw in ["drive through", "drive-thru", "dt"]):
+            summary_dict["Type"] = "Drive-Thru"
+        # Do NOT guess POS — leave unknown if no type was explicitly stated
+
     if "Number" not in summary_dict:
-        num_match = re.search(r"\b(pos|kiosk|kds|kvs|unit)?\s*#?\s*(\d)\b", all_text)
-        t = summary_dict.get("Type", "POS")
-        if num_match:
+        num_match = re.search(r"\b(pos|kiosk|kds|kvs|unit)?\s*#?\s*(\d)\b", user_text)
+        t = summary_dict.get("Type", "")
+        if num_match and t:
             summary_dict["Number"] = f"{t}{num_match.group(2)}"
-        else:
-            summary_dict["Number"] = f"{t}1"
+        # Do NOT guess a number — leave unknown if no asset number was explicitly stated
 
     # Core device/issue rows (always shown in Triage Diagnostics)
     core_defaults = [
-        ("Type", "POS"),
-        ("Number", "POS1"),
+        ("Type", "Unknown"),
+        ("Number", "Unknown"),
         ("What is the issue", "Unknown"),
         ("Device Information", "Skipped device info"),
     ]
@@ -916,6 +1213,10 @@ def get_choices_from_message(content: str) -> list[str]:
     if "more information about the problem" in content_lower or "when it began" in content_lower:
         return []
 
+    # 0. No-KB-match or troubleshooting exhausted stopper choices
+    if "how would you like to proceed" in content_lower and ("open a support ticket" in content_lower or "live chat" in content_lower):
+        return ["Open a support ticket", "Live Chat with an Agent"]
+
     # 0. Case routing choices
     if "cases with more details" in content_lower or "quicker resolution" in content_lower:
         return ["Manual Ticket Flow", "Continue with Automated Flow"]
@@ -935,7 +1236,7 @@ def get_choices_from_message(content: str) -> list[str]:
         
     # 3. Unit number questions
     if any(phrase in content_lower for phrase in [
-        "which pos number", "which kiosk number", "which device number", "which unit number", 
+        "which pos number", "which kiosk number", "which device number", "which unit number",
         "what # device", "what number", "device number is exper", "number is exper"
     ]):
         return ["1", "2", "3", "4"]
@@ -944,64 +1245,70 @@ def get_choices_from_message(content: str) -> list[str]:
     match_paren = re.search(r"\(([^)]+)\)\s*\??\s*$", content.strip())
     if match_paren:
         s = match_paren.group(1).strip()
-        
-        # Clean leading e.g. prefixes completely from the start of the paren text
         s_clean = re.sub(r"^e\.g\.?,?\s*", "", s, flags=re.IGNORECASE).strip()
-        
-        # Try to find all quoted substrings (standard or curly quotes)
-        quoted = re.findall(r'["\'“’‘”]([^"\'“’‘”]+)["\'“’‘”]', s_clean)
+        quoted = re.findall(r'["\'"\u2018\u2019\u201c\u201d]([^"\'"\u2018\u2019\u201c\u201d]+)["\'"\u2018\u2019\u201c\u201d]', s_clean)
         if quoted:
             raw_choices = quoted
         else:
-            # Fallback to comma/or/slash splitting
             parts = re.split(r",\s*|\s+or\s+|\s*/\s*", s_clean)
             raw_choices = parts
-            
         cleaned = []
         for choice in raw_choices:
-            # Remove all forms of quotes
-            c = choice.replace('"', '').replace("'", "").replace('“', '').replace('”', '').replace('‘', '').replace('’', '').strip()
-            
-            # Ignore e.g. prefixes again if they somehow remain
+            c = choice.replace('"', '').replace("'", '').replace('\u201c', '').replace('\u201d', '').replace('\u2018', '').replace('\u2019', '').strip()
             if c.lower().startswith("e.g."):
                 c = c[4:].strip()
             elif c.lower().startswith("e.g"):
                 c = c[3:].strip()
-                
-            # Strip trailing commas or punctuation
             c = c.rstrip(",.? ")
-            
-            # Final filter to prevent "e.g" or empty options
             if c and c.lower() not in ["e.g.", "e.g", "example", "or", "and"]:
                 cleaned.append(c)
-                
         if 1 < len(cleaned) <= 6:
             return cleaned
 
     return []
 
 
-def clean_assistant_message(content: str) -> str:
+def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
     """
     Remove parenthesized options list from assistant messages if suggestion chips will be displayed,
     append context-appropriate instruction suffixes, and wrap the troubleshooting salvo in a colored box.
     """
     import re
-    
+
+    # Skip processing for Chip's live agent messages — render verbatim
+    if content.startswith("Hello, my name is Chip."):
+        return content
+
+    # Skip processing for the case details summary block
+    if "Case Details Collected So Far" in content:
+        return content
+
     # 1. Intercept troubleshooting salvo and put inside a colored box
     salvo_text = "There are some common troubleshooting steps that might help you fix this issue on your own. We will quickly step through them to see if this solves the issue"
-    if salvo_text.lower() in content.lower():
-        pattern = re.compile(re.escape(salvo_text) + r"\.?", re.IGNORECASE)
-        replacement = (
-            '<div style="background: rgba(218, 41, 28, 0.08); border: 1px solid rgba(255, 199, 44, 0.3); '
-            'border-left: 4px solid var(--accent); padding: 12px 14px; border-radius: 8px; margin: 10px 0; '
-            'font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
-            '⚡ <b>Recommended Troubleshooting</b><br/>'
-            'There are some common troubleshooting steps that might help you fix this issue on your own. '
-            'We will quickly step through them to see if this solves the issue.'
-            '</div>'
-        )
-        content = pattern.sub(replacement, content)
+
+    # Verify if the content contains actual steps/instructions
+    has_concrete_steps = False
+    lower_content = content.lower()
+    if "did this resolve" in lower_content or "resolve the issue" in lower_content or "did that work" in lower_content or "did it work" in lower_content:
+        has_concrete_steps = True
+
+    if salvo_text.lower() in lower_content:
+        if not has_concrete_steps:
+            # No actual steps — strip the salvo entirely and don't render the card
+            pattern = re.compile(re.escape(salvo_text) + r"\.?", re.IGNORECASE)
+            content = pattern.sub("", content).strip()
+        else:
+            pattern = re.compile(re.escape(salvo_text) + r"\.?", re.IGNORECASE)
+            replacement = (
+                '<div style="background: rgba(218, 41, 28, 0.08); border: 1px solid rgba(255, 199, 44, 0.3); '
+                'border-left: 4px solid var(--accent); padding: 12px 14px; border-radius: 8px; margin: 10px 0; '
+                'font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
+                '⚡ <b>Recommended Troubleshooting</b><br/>'
+                'There are some common troubleshooting steps that might help you fix this issue on your own. '
+                'We will quickly step through them to see if this solves the issue.'
+                '</div>'
+            )
+            content = pattern.sub(replacement, content)
 
     # 1.5 Intercept escalation/exhausted steps and insert Ticket Impact Assessment banner
     # immediately after it, completely removing the "Entering Ticket Creation Flow" banner.
@@ -1121,7 +1428,12 @@ def clean_assistant_message(content: str) -> str:
             flags=re.IGNORECASE
         )
         
-    cleaned = cleaned.rstrip("?:. ")
+    # Strip any trailing sentence fragments commonly left behind after removing parenthesized option list
+    # e.g., "for example, is it", "is it", "such as", "like", "for instance, is it a", etc.
+    fragment_pattern = r"\b(?:for\s+example|for\s+instance),?\s+(?:is\s+it(?:\s+a)?|are\s+they)?\s*$|\b(?:is\s+it|are\s+they)(?:\s+a)?\s*$|\b(?:such\s+as|like|specifically)\s*$"
+    cleaned = re.sub(fragment_pattern, "", cleaned, flags=re.IGNORECASE).strip()
+    
+    cleaned = cleaned.rstrip("?:.,; ")
     
     # 4. Dynamic Suffixes Selection
     content_lower = content.lower()
@@ -1144,9 +1456,8 @@ def clean_assistant_message(content: str) -> str:
 
 def trigger_live_agent_flow(user_message_text: str) -> None:
     """
-    Simulates escalating to a live chat agent by dumping collected diagnostics,
-    showing a connecting message, and scheduling Franklin to join in the next loop.
-    Uses the same diagnostic data as the ticket creation form.
+    Triggers Stage 1 of the Live Agent escalation flow (acknowledged state).
+    Builds the high-fidelity summary table and connecting notice in a single assistant message.
     """
     import time
     ts_now = time.strftime("%H:%M")
@@ -1161,23 +1472,57 @@ def trigger_live_agent_flow(user_message_text: str) -> None:
             "blocked": False
         })
         
-    # 2. Get diagnostic summary — same data as ticket form, filtered of __section__ sentinels
-    diag_summary = get_diagnostic_summary()
     active_store = st.session_state.get("active_store", "67067")
+    logger.info("Live Agent escalation flow triggered (acknowledged stage). Store ID: %s. User message: %s", active_store, user_message_text)
     
+    # Store addresses map
+    STORE_ADDRESSES = {
+        67067: {
+            "address": "1725 Slough Avenue, Scranton, PA 18503",
+            "location": "Scranton Restaurant"
+        },
+        67068: {
+            "address": "120 Paper Place, Scranton, PA 18508",
+            "location": "Scranton North Restaurant"
+        },
+        67069: {
+            "address": "420 Paper Mill Road, Scranton, PA 18512",
+            "location": "Scranton East Restaurant"
+        }
+    }
+    
+    store_info = STORE_ADDRESSES.get(int(active_store) if str(active_store).isdigit() else 67067, {
+        "address": "1725 Slough Avenue, Scranton, PA 18503",
+        "location": "Scranton Restaurant"
+    })
+    store_address = store_info["address"]
+    store_location = store_info["location"]
+    
+    name = st.session_state.get("ticket_name", "Jim Halpert")
+    phone = st.session_state.get("ticket_phone", "(570) 555-0142")
+    backup_name = st.session_state.get("ticket_backup_name", "").strip()
+    backup_phone = st.session_state.get("ticket_backup_phone", "").strip()
+
     case_dump_lines = [
-        "🤖 **Live Agent Handoff – Case Details Collected So Far:**\n\n",
+        "Got it, let me pull in one of our support engineers to look at this with you. Hang tight for a second while I package up what we've gone over so far.\n\n",
+        "### 📋 Case Transfer Context Staged by Chip\n\n",
         "| Parameter | Value |\n",
         "| :--- | :--- |\n",
-        f"| **Active Store** | `Store #{active_store}` |\n"
+        f"| **Active Store** | `Store #{active_store} ({store_location})` |\n",
+        f"| **Store Address** | `{store_address}` |\n",
+        f"| **Contact Name** | `{name}` |\n",
+        f"| **Contact Phone** | `{phone}` |\n"
     ]
-    for q, a in diag_summary:
-        if q == "__section__":
-            # Render section headers as separator rows in the table
-            case_dump_lines.append(f"| **— {a} —** |  |\n")
-            continue
-        case_dump_lines.append(f"| **{q}** | `{a}` |\n")
+    
+    if backup_name:
+        case_dump_lines.append(f"| **Backup Contact** | `{backup_name}` |\n")
+    if backup_phone:
+        case_dump_lines.append(f"| **Backup Phone** | `{backup_phone}` |\n")
         
+    for k, v in st.session_state.current_triage.items():
+        if v is not None and str(v).strip():
+            case_dump_lines.append(f"| **{k}** | `{v}` |\n")
+            
     case_dump_text = "".join(case_dump_lines)
     st.session_state.messages.append({
         "role": "assistant",
@@ -1186,16 +1531,9 @@ def trigger_live_agent_flow(user_message_text: str) -> None:
         "blocked": False
     })
     
-    # 3. Append "Connecting to live agent, please hold.."
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": "Connecting to live agent, please hold..",
-        "timestamp": ts_now,
-        "blocked": False
-    })
-    
-    # Schedule Franklin's message on next run loop
-    st.session_state.live_agent_pending_connection = True
+    package_conversational_context()
+    st.session_state.escalation_stage = "acknowledged"
+    st.session_state.escalated = True
     st.rerun()
 
 
@@ -1478,34 +1816,41 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
         st.markdown("<div class='lock-lbl' style='color:#8892a4;'>Backup Phone</div>", unsafe_allow_html=True)
         backup_phone_val = st.text_input("Backup Phone", placeholder="(555) 555-0100", label_visibility="collapsed", key="ticket_backup_phone")
         
-    # Card 1.5: Additional Information Card
-    with st.container(border=True):
-        st.markdown(
-            f"<div class='confirm-header'>📝 Additional Information</div>",
-            unsafe_allow_html=True
-        )
-        st.markdown(
-            "<div class='lock-lbl' style='color:#f0f2f8; text-transform:none;'>"
-            "Is there any other information you can provide to the agent about this issue "
-            "(when the problem began, other troubleshooting that has been tried)</div>",
-            unsafe_allow_html=True
-        )
-        st.text_area(
-            "Additional Info",
-            placeholder="e.g. Started after power surge, already rebooted twice...",
-            label_visibility="collapsed",
-            key="ticket_extra_info"
-        )
-
     # Card 2: Manual Ticket Details (if manual flow is active)
     manual_flow = st.session_state.get("manual_ticket_flow", False)
+
+    # Card 1.5: Additional Information Card
+    # Only show when NOT in manual_ticket_flow — if manual flow is active the user
+    # already has a free-form Description field below, so double-prompting is redundant.
+    if not manual_flow:
+        with st.container(border=True):
+            st.markdown(
+                f"<div class='confirm-header'>📝 Additional Information</div>",
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                "<div class='lock-lbl' style='color:#f0f2f8; text-transform:none;'>"
+                "Is there any other information you can provide to the agent about this issue "
+                "(when the problem began, other troubleshooting that has been tried)</div>",
+                unsafe_allow_html=True
+            )
+            st.text_area(
+                "Additional Info",
+                placeholder="e.g. Started after power surge, already rebooted twice...",
+                label_visibility="collapsed",
+                key="ticket_extra_info"
+            )
     if manual_flow:
-        # Pre-populate short description from first user message
+        # Pre-populate short description from AI issue description or fallback to first user message
         first_user_msg = ""
-        for m in st.session_state.get("messages", []):
-            if m["role"] == "user":
-                first_user_msg = m["content"].replace("**", "").replace("`", "").strip()
-                break
+        ai_desc = st.session_state.get("ai_issue_description", "")
+        if ai_desc and ai_desc != "Unknown":
+            first_user_msg = ai_desc
+        else:
+            for m in st.session_state.get("messages", []):
+                if m["role"] == "user":
+                    first_user_msg = m["content"].replace("**", "").replace("`", "").strip()
+                    break
 
         with st.container(border=True):
             st.markdown(
@@ -1525,218 +1870,273 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             )
             st.text_area("Description", placeholder="Describe the problem with as much detail as possible...", label_visibility="collapsed", key="ticket_manual_desc")
 
-    # Card 3: Diagnostic Summary Card
-    diag_summary = get_diagnostic_summary()
-    
-    st.markdown("<div class='diagnostic-card'>", unsafe_allow_html=True)
-    current_section = "Triage Diagnostics"
-    st.markdown(f"<div class='diagnostic-header'>{current_section}</div>", unsafe_allow_html=True)
-    for q, a in diag_summary:
-        if q == "__section__":
-            if a == current_section:
-                continue
-            # Close previous section and open a new one
-            current_section = a
-            st.markdown(
-                f"<div class='diagnostic-header' style='margin-top:16px; padding-top:12px; "
-                f"border-top: 1px solid rgba(255,255,255,0.08);'>{a}</div>",
-                unsafe_allow_html=True
-            )
-            continue
+    # Card 2.5: Optional Image Attachment Card
+    with st.container(border=True):
         st.markdown(
-            f"<div class='diagnostic-row'>"
-            f"  <div class='diagnostic-key'>{q}</div>"
-            f"  <div class='diagnostic-val'>{a}</div>"
-            f"</div>",
+            f"<div class='confirm-header'>📷 Attach a Photo</div>",
             unsafe_allow_html=True
         )
+        st.markdown(
+            "<div class='lock-lbl' style='color:#f0f2f8; text-transform:none; margin-bottom: 8px;'>"
+            "Upload an optional photo or screenshot of the issue (optional)</div>",
+            unsafe_allow_html=True
+        )
+        st.file_uploader(
+            "Attach Photo",
+            type=["png", "jpg", "jpeg"],
+            label_visibility="collapsed",
+            key="ticket_image_upload"
+        )
+
+    # Card 3: Diagnostic Summary Card
+    triage_keys = [
+        "Device Type", "Asset Number", "Issue Description", "Device Model",
+        "Serial Number", "Stopping Orders/Payments", "Only Device of its Kind",
+        "Other Devices Functional", "Priority"
+    ]
+    troubleshooting_keys = [
+        "Is there visible paper", "Internal Jam Roller C", "Are you OTP or OTP cer"
+    ]
+
+    st.markdown("<div class='diagnostic-card'>", unsafe_allow_html=True)
+    
+    # Section 1: Triage Diagnostics
+    st.markdown(f"<div class='diagnostic-header'>Triage Diagnostics</div>", unsafe_allow_html=True)
+    for k in triage_keys:
+        v = st.session_state.current_triage.get(k)
+        if v is not None and str(v).strip():
+            st.markdown(
+                f"<div class='diagnostic-row'>"
+                f"  <div class='diagnostic-key'>{k}</div>"
+                f"  <div class='diagnostic-val'>{v}</div>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+            
+    # Section 2: Troubleshooting Steps Attempted
+    has_troubleshooting = any(k in st.session_state.current_triage for k in troubleshooting_keys)
+    if has_troubleshooting:
+        st.markdown(
+            f"<div class='diagnostic-header' style='margin-top:16px; padding-top:12px; "
+            f"border-top: 1px solid rgba(255,255,255,0.08);'>Troubleshooting Steps Attempted</div>",
+            unsafe_allow_html=True
+        )
+        for k in troubleshooting_keys:
+            v = st.session_state.current_triage.get(k)
+            if v is not None and str(v).strip():
+                st.markdown(
+                    f"<div class='diagnostic-row'>"
+                    f"  <div class='diagnostic-key'>{k}</div>"
+                    f"  <div class='diagnostic-val'>{v}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
     st.markdown("</div>", unsafe_allow_html=True)
     
     # Buttons with dynamic style markers
     st.markdown("<div class='submit-btn-marker'></div>", unsafe_allow_html=True)
     if st.button("🎫 Submit Support Ticket", use_container_width=True, key="submit_ticket_collection"):
-        if manual_flow:
-            m_s_desc = st.session_state.get("ticket_manual_short_desc", "").strip()
-            m_desc = st.session_state.get("ticket_manual_desc", "").strip()
-            if not m_s_desc or not m_desc:
-                st.error("⚠️ Please enter both a Short Description and Description.")
-                st.stop()
+        try:
+            if manual_flow:
+                m_s_desc = st.session_state.get("ticket_manual_short_desc", "").strip()
+                m_desc = st.session_state.get("ticket_manual_desc", "").strip()
+                if not m_s_desc or not m_desc:
+                    st.error("⚠️ Please enter both a Short Description and Description.")
+                    st.stop()
+                    
+            import random
+            # ServiceNow Ticket Number format: INC followed by 7 digits
+            inc_num = f"INC{random.randint(1000000, 9999999)}"
+            
+            # Determine category and sub-category dynamically
+            all_chat_text = " ".join([m["content"] for m in st.session_state.messages]).lower()
+            summary_text = " ".join([f"{k} {v}" for k, v in st.session_state.current_triage.items()]).lower()
+            combined_text = all_chat_text + " " + summary_text
+            
+            sub_category = "kiosk"
+            device_type = st.session_state.current_triage.get("Device Type", "").lower()
+            if "printer" in device_type or "print" in device_type or "printer" in combined_text or "print" in combined_text:
+                sub_category = "printer"
+            elif "pos" in device_type or "register" in device_type or "pos" in combined_text or "terminal" in combined_text or "register" in combined_text:
+                sub_category = "pos"
+            elif "kvs" in device_type or "kitchen" in device_type or "kvs" in combined_text:
+                sub_category = "kvs"
+            elif "kiosk" in device_type or "kiosk" in combined_text:
+                sub_category = "kiosk"
+            elif "bos" in device_type or "back office" in device_type or "bos" in combined_text:
+                sub_category = "bos"
                 
-        import random
-        # ServiceNow Ticket Number format: INC followed by 7 digits
-        inc_num = f"INC{random.randint(1000000, 9999999)}"
-        
-        # Determine category and sub-category dynamically
-        all_chat_text = " ".join([m["content"] for m in st.session_state.messages]).lower()
-        summary_text = " ".join([f"{q} {a}" for q, a in diag_summary]).lower()
-        combined_text = all_chat_text + " " + summary_text
-        
-        sub_category = "kiosk"
-        if "printer" in combined_text or "print" in combined_text:
-            sub_category = "printer"
-        elif "pos" in combined_text or "terminal" in combined_text or "register" in combined_text:
-            sub_category = "pos"
+            category = "hardware"
+            if any(kw in combined_text for kw in ["slow", "lagging", "crash", "network", "offline", "login", "password"]):
+                category = "software"
+                
+            # Parse serial number if present in triage
+            serial_val = st.session_state.current_triage.get("Serial Number", "—")
+            if serial_val in ["—", "Unknown"]:
+                for msg in st.session_state.messages:
+                    content = msg["content"]
+                    match = re.search(r"\b([A-Z0-9]{2,6}[-]?[\d]{5,12})\b", content)
+                    if match:
+                        serial_val = match.group(1)
+                        break
+                
+            # Compile structured dump
+            diagnostic_dump_lines = []
+            diagnostic_dump_lines.append("[Device Details]")
+            diagnostic_dump_lines.append(f"- Store ID: {active_store}")
+            diagnostic_dump_lines.append(f"- Location: {store_location}")
+            diagnostic_dump_lines.append(f"- Reporter: Jim Halpert (Phone: {phone_val})")
             
-        category = "hardware"
-        if any(kw in combined_text for kw in ["slow", "lagging", "crash", "network", "offline", "login", "password"]):
-            category = "software"
-            
-        # Parse serial number if present in history or triage
-        serial_val = "—"
-        if st.session_state.get("triage_serial") and st.session_state.get("triage_serial") != "Unknown":
-            serial_val = st.session_state.triage_serial
-        else:
-            for msg in st.session_state.messages:
-                content = msg["content"]
-                match = re.search(r"\b([A-Z0-9]{2,6}[-]?[\d]{5,12})\b", content)
-                if match:
-                    serial_val = match.group(1)
-                    break
-            
-        # Compile structured dump
-        diagnostic_dump_lines = []
-        diagnostic_dump_lines.append("[Device Details]")
-        diagnostic_dump_lines.append(f"- Store ID: {active_store}")
-        diagnostic_dump_lines.append(f"- Location: {store_location}")
-        diagnostic_dump_lines.append(f"- Reporter: Jim Halpert (Phone: {phone_val})")
-        if st.session_state.get("triage_model"):
-            diagnostic_dump_lines.append(f"- Device Model: {st.session_state.triage_model}")
-        if st.session_state.get("triage_serial"):
-            diagnostic_dump_lines.append(f"- Serial Number: {st.session_state.triage_serial}")
-        if st.session_state.get("triage_priority"):
-            diagnostic_dump_lines.append(f"- Calculated Priority: {st.session_state.triage_priority}")
-            
-        if backup_name_val.strip() or backup_phone_val.strip():
-            b_name = backup_name_val.strip() if backup_name_val.strip() else "None specified"
-            b_phone = backup_phone_val.strip() if backup_phone_val.strip() else "None specified"
-            diagnostic_dump_lines.append(f"- Backup Contact: {b_name} (Phone: {b_phone})")
-            
-        extra_info = st.session_state.get("ticket_extra_info", "").strip()
-        if extra_info:
-            diagnostic_dump_lines.append(f"- Additional Agent Info: {extra_info}")
-
-        # Split diag_summary into core triage rows vs troubleshooting Q&A rows
-        diagnostic_dump_lines.append("\n[Triage Diagnostics]")
-        in_ts_section = False
-        ts_dump_lines = []
-        for q, a in diag_summary:
-            if q == "__section__":
-                if a == "Troubleshooting Steps Attempted":
-                    in_ts_section = True
-                else:
-                    in_ts_section = False
-                continue
-            if in_ts_section:
-                ts_dump_lines.append(f"- {q}: {a}")
-            else:
-                diagnostic_dump_lines.append(f"- {q}: {a}")
-
-        # Troubleshooting steps section
-        diagnostic_dump_lines.append("\n[Troubleshooting Steps Attempted]")
-        # First add the Q&A pairs captured from chat (visible paper, roller, OTP, etc.)
-        diagnostic_dump_lines.extend(ts_dump_lines)
-        # Then add any assistant-driven step summaries from chat messages
-        step_index = len(ts_dump_lines) + 1
-        for msg in st.session_state.messages:
-            if msg["role"] == "assistant":
-                content = msg["content"]
-                if any(step_kw in content for step_kw in ["Reboot", "Power cycle", "Clear the Paper Jam", "Clean the Card Reader", "Restart"]):
-                    step_title = "Step"
-                    for line in content.split('\n'):
-                        if any(kw in line for kw in ["Reboot", "Jam", "Cable", "Power", "Reader"]):
-                            step_title = line.replace("**", "").replace("`", "").replace("##", "").strip()
-                            break
-                    diagnostic_dump_lines.append(f"{step_index}. {step_title} (Attempted) -> Outcome: Did not resolve the issue.")
-                    step_index += 1
-
-        if step_index == 1 and not ts_dump_lines:
-            diagnostic_dump_lines.append("- No troubleshooting steps could be attempted or they were skipped.")
-            
-        diagnostic_dump_lines.append("\n[System Action]")
-        diagnostic_dump_lines.append("- Escalated to ServiceNow via virtual assistant chat session.")
-        
-        if manual_flow:
-            short_desc = st.session_state.get("ticket_manual_short_desc", "").strip()
-            full_description_dump = st.session_state.get("ticket_manual_desc", "").strip()
+            t_model = st.session_state.current_triage.get("Device Model")
+            if t_model and t_model != "Unknown":
+                diagnostic_dump_lines.append(f"- Device Model: {t_model}")
+            t_serial = st.session_state.current_triage.get("Serial Number")
+            if t_serial and t_serial != "Unknown":
+                diagnostic_dump_lines.append(f"- Serial Number: {t_serial}")
+            t_priority = st.session_state.current_triage.get("Priority")
+            if t_priority:
+                diagnostic_dump_lines.append(f"- Calculated Priority: {t_priority}")
+                
+            if backup_name_val.strip() or backup_phone_val.strip():
+                b_name = backup_name_val.strip() if backup_name_val.strip() else "None specified"
+                b_phone = backup_phone_val.strip() if backup_phone_val.strip() else "None specified"
+                diagnostic_dump_lines.append(f"- Backup Contact: {b_name} (Phone: {b_phone})")
+                
             extra_info = st.session_state.get("ticket_extra_info", "").strip()
             if extra_info:
-                full_description_dump += f"\n\n[Additional Information]\n- {extra_info}"
-        else:
-            full_description_dump = "\n".join(diagnostic_dump_lines)
+                diagnostic_dump_lines.append(f"- Additional Agent Info: {extra_info}")
+    
+            # Split current_triage into core triage rows vs troubleshooting Q&A rows
+            diagnostic_dump_lines.append("\n[Triage Diagnostics]")
+            for k in triage_keys:
+                v = st.session_state.current_triage.get(k)
+                if v is not None and str(v).strip():
+                    diagnostic_dump_lines.append(f"- {k}: {v}")
+    
+            # Troubleshooting steps section
+            diagnostic_dump_lines.append("\n[Troubleshooting Steps Attempted]")
+            ts_dump_count = 0
+            for k in troubleshooting_keys:
+                v = st.session_state.current_triage.get(k)
+                if v is not None and str(v).strip():
+                    diagnostic_dump_lines.append(f"- {k}: {v}")
+                    ts_dump_count += 1
+                    
+            # Then add any assistant-driven step summaries from chat messages
+            step_index = ts_dump_count + 1
+            for msg in st.session_state.messages:
+                if msg["role"] == "assistant":
+                    content = msg["content"]
+                    if any(step_kw in content for step_kw in ["Reboot", "Power cycle", "Clear the Paper Jam", "Clean the Card Reader", "Restart"]):
+                        step_title = "Step"
+                        for line in content.split('\n'):
+                            if any(kw in line for kw in ["Reboot", "Jam", "Cable", "Power", "Reader"]):
+                                step_title = line.replace("**", "").replace("`", "").replace("##", "").strip()
+                                break
+                        diagnostic_dump_lines.append(f"{step_index}. {step_title} (Attempted) -> Outcome: Did not resolve the issue.")
+                        step_index += 1
+    
+            if step_index == 1 and ts_dump_count == 0:
+                diagnostic_dump_lines.append("- No troubleshooting steps could be attempted or they were skipped.")
+                
+            diagnostic_dump_lines.append("\n[System Action]")
+            diagnostic_dump_lines.append("- Escalated to ServiceNow via chat session with support engineer Chip.")
             
-            # Build Short Description
-            short_desc = f"{sub_category.capitalize()} triage escalation - {diag_summary[0][1] if diag_summary else 'Hardware issue'}"
-            if len(short_desc) > 80:
-                short_desc = short_desc[:77] + "..."
+            if manual_flow:
+                short_desc = st.session_state.get("ticket_manual_short_desc", "").strip()
+                full_description_dump = st.session_state.get("ticket_manual_desc", "").strip()
+                extra_info = st.session_state.get("ticket_extra_info", "").strip()
+                if extra_info:
+                    full_description_dump += f"\n\n[Additional Information]\n- {extra_info}"
+            else:
+                full_description_dump = "\n".join(diagnostic_dump_lines)
+                
+                # Build Short Description
+                short_desc = f"{sub_category.capitalize()} triage escalation - {st.session_state.current_triage.get('Device Type', 'Hardware issue')}"
+                if len(short_desc) > 80:
+                    short_desc = short_desc[:77] + "..."
+                
+            # Handle photo upload conversion for ticket submission
+            attachment_b64 = None
+            attachment_name = None
+            ticket_image = st.session_state.get("ticket_image_upload")
+            if ticket_image is not None:
+                base64_url = file_to_base64_data_url(ticket_image)
+                if base64_url:
+                    attachment_b64 = base64_url
+                    attachment_name = ticket_image.name
+
+            # Store metadata
+            meta = {
+                "ticket_id": inc_num,
+                "store_id": f"STORE-{active_store}",
+                "asset_type": sub_category.upper(),
+                "asset_serial_number": serial_val,
+                "severity": "CRITICAL" if category == "software" else "HIGH",
+                "sla_breach_minutes": 30 if category == "software" else 60,
+                "routing_target": "Unisys RTS L1 - SD - US",
+                "auto_dispatch": True,
+                "channel": "chat",
+                "description": full_description_dump,
+                "short_description": short_desc,
+                "category": category,
+                "sub_category": sub_category,
+                "caller": f"Jim Halpert, Store #{active_store}, {store_location}",
+                "contact_type": "chat",
+                "assignment_group": "Unisys RTS L1 - SD - US",
+                "priority": st.session_state.current_triage.get("Priority", "P3"),
+                "attachment_base64": attachment_b64,
+                "attachment_name": attachment_name
+            }
             
-        # Store metadata
-        meta = {
-            "ticket_id": inc_num,
-            "store_id": f"STORE-{active_store}",
-            "asset_type": sub_category.upper(),
-            "asset_serial_number": serial_val,
-            "severity": "CRITICAL" if category == "software" else "HIGH",
-            "sla_breach_minutes": 30 if category == "software" else 60,
-            "routing_target": "Unisys RTS L1 - SD - US",
-            "auto_dispatch": True,
-            "channel": "chat",
-            "description": full_description_dump,
-            "short_description": short_desc,
-            "category": category,
-            "sub_category": sub_category,
-            "caller": f"Jim Halpert, Store #{active_store}, {store_location}",
-            "contact_type": "chat",
-            "assignment_group": "Unisys RTS L1 - SD - US",
-            "priority": st.session_state.get("triage_priority", "P3")
-        }
-        
-        st.session_state.ticket_metadata = meta
-        st.session_state.escalation_triggered = True
-        
-        # Compile response message for the chat history
-        _ts = time.strftime("%H:%M")
-        
-        success_content = (
-            f"🎫 **ServiceNow Ticket Generated Successfully!**\n\n"
-            f"Below are the registered integration parameters sent to ServiceNow:\n\n"
-            f"| ServiceNow Parameter | Registered Value |\n"
-            f"| :--- | :--- |\n"
-            f"| **Ticket Number** | `{meta['ticket_id']}` |\n"
-            f"| **Priority** | `{meta.get('priority', 'P3')}` |\n"
-            f"| **Caller** | `{meta['caller']}` |\n"
-            f"| **Category** | `{meta['category']}` |\n"
-            f"| **Sub-category** | `{meta['sub_category']}` |\n"
-            f"| **Short Description** | `{meta['short_description']}` |\n"
-            f"| **Contact Type** | `{meta['contact_type']}` |\n"
-            f"| **Assignment Group** | `{meta['assignment_group']}` |\n\n"
-            f"#### 📝 Full Description & Diagnostic Dump:\n"
-            f"```text\n"
-            f"{meta['description']}\n"
-            f"```\n\n"
-            f"An engineer from the **{meta['assignment_group']}** group has been dispatched and is reviewing this ticket."
-        )
-        
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": success_content,
-            "timestamp": _ts,
-            "blocked": False
-        })
-        
-        st.session_state.ticket_collection_active = False
-        st.session_state.show_restart_chat_btn = True
-        st.rerun()
+            logger.info("Submitting support ticket to ServiceNow. Store ID: %s, Category: %s, Sub-category: %s", active_store, category, sub_category)
+            logger.info("ServiceNow Ticket Payload: %s", json.dumps(meta, indent=2))
+            
+            st.session_state.ticket_metadata = meta
+            st.session_state.escalation_triggered = True
+            
+            # Compile response message for the chat history
+            _ts = time.strftime("%H:%M")
+            
+            success_content = (
+                f"🎫 **ServiceNow Ticket Generated Successfully!**\n\n"
+                f"Below are the registered integration parameters sent to ServiceNow:\n\n"
+                f"| ServiceNow Parameter | Registered Value |\n"
+                f"| :--- | :--- |\n"
+                f"| **Ticket Number** | `{meta['ticket_id']}` |\n"
+                f"| **Priority** | `{meta.get('priority', 'P3')}` |\n"
+                f"| **Caller** | `{meta['caller']}` |\n"
+                f"| **Category** | `{meta['category']}` |\n"
+                f"| **Sub-category** | `{meta['sub_category']}` |\n"
+                f"| **Short Description** | `{meta['short_description']}` |\n"
+                f"| **Contact Type** | `{meta['contact_type']}` |\n"
+                f"| **Assignment Group** | `{meta['assignment_group']}` |\n\n"
+                f"#### 📝 Full Description & Diagnostic Dump:\n"
+                f"```text\n"
+                f"{meta['description']}\n"
+                f"```\n\n"
+                f"An engineer from the **{meta['assignment_group']}** group has been dispatched and is reviewing this ticket."
+            )
+            
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": success_content,
+                "timestamp": _ts,
+                "blocked": False,
+                "attachment_b64": attachment_b64,
+                "attachment_name": attachment_name
+            })
+            
+            st.session_state.ticket_collection_active = False
+            st.session_state.show_restart_chat_btn = True
+            st.rerun()
+        except Exception as e:
+            logger.exception("Failed to submit ServiceNow ticket")
+            st.error("⚠️ An unexpected error occurred while generating your support ticket. Please try again or contact support directly.")
         
     st.markdown("<div class='cancel-btn-marker'></div>", unsafe_allow_html=True)
     if st.button("← Start Over", use_container_width=True, key="cancel_ticket_collection"):
-        st.session_state.messages = []
-        st.session_state.ticket_metadata = None
-        st.session_state.escalation_triggered = False
-        st.session_state.ticket_collection_active = False
-        st.session_state.rag_hits = {}
-        st.session_state.manual_ticket_flow = False
-        st.session_state.show_restart_chat_btn = False
-        reset_triage_state()
+        st.session_state.needs_reset = True
         st.rerun()
 
 
@@ -1802,6 +2202,19 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
+        if meta.get("attachment_base64"):
+            st.markdown("**Attached Image**")
+            st.markdown(
+                f'<div style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border); '
+                f'margin-top: 4px; margin-bottom: 12px; background: #0f1016; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);">'
+                f'  <img src="{meta["attachment_base64"]}" style="width: 100%; height: auto; display: block; max-height: 160px; object-fit: contain;" />'
+                f'  <div style="padding: 6px 10px; font-size: 10px; color: var(--text-muted); border-top: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">'
+                f'    📎 {meta.get("attachment_name", "Attachment")}'
+                f'  </div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
         st.markdown("**Description**")
         st.caption(meta.get("description", "—")[:200])
 
@@ -1811,9 +2224,7 @@ with st.sidebar:
         st.code(json.dumps(meta, indent=2), language="json")
 
         if st.button("🔄 Clear Ticket"):
-            st.session_state.ticket_metadata = None
-            st.session_state.escalation_triggered = False
-            reset_triage_state()
+            st.session_state.needs_reset = True
             st.rerun()
 
     else:
@@ -1841,13 +2252,7 @@ with st.sidebar:
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🗑️ Clear Chat", use_container_width=True):
-            st.session_state.messages = []
-            st.session_state.ticket_metadata = None
-            st.session_state.escalation_triggered = False
-            st.session_state.rag_hits = {}
-            st.session_state.ticket_collection_active = False
-            st.session_state.manual_ticket_flow = False
-            reset_triage_state()
+            st.session_state.needs_reset = True
             st.rerun()
     with col2:
         if st.button("🎫 Force Ticket", use_container_width=True):
@@ -1865,6 +2270,19 @@ with st.sidebar:
         """,
         unsafe_allow_html=True,
     )
+def load_store_context():
+    store_id = st.session_state.get("header_store_selector", DEFAULT_STORE)
+    st.session_state.active_store = store_id
+    from mocks.servicenow import get_store_tickets, get_store_mims
+    st.session_state.active_tickets = get_store_tickets(store_id)
+    st.session_state.active_mims = get_store_mims(store_id)
+    logger.info("Active store changed to %s. Loaded %d tickets and %d MIMs.", store_id, len(st.session_state.active_tickets), len(st.session_state.active_mims))
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": f"🔄 **Switched active context to Store #{store_id}.** How can I assist you with this store?",
+        "timestamp": time.strftime("%H:%M"),
+        "blocked": False
+    })
 
 # ---------------------------------------------------------------------------
 # Header
@@ -1879,7 +2297,7 @@ with h_col1:
         <div style="display:flex; align-items:center; gap:8px; height: 100%; margin-top: 4px;">
             <div style="font-size:20px; background:linear-gradient(135deg, var(--accent) 0%, var(--text-accent) 100%); width:32px; height:32px; border-radius:6px; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 8px var(--accent-glow); flex-shrink:0;">🍔</div>
             <div style="min-width:0;">
-                <div style="font-size:22px; font-weight:800; color:#f0f2f8; line-height:1.0; letter-spacing:-0.5px; padding-bottom: 2px;">chipLLM</div>
+                <div style="font-size:22px; font-weight:800; color:#f0f2f8; line-height:1.0; letter-spacing:-0.5px; padding-bottom: 2px;">Chip</div>
             </div>
         </div>
         """,
@@ -1893,17 +2311,33 @@ with h_col2:
         index=STORE_OPTIONS.index(st.session_state.active_store) if st.session_state.active_store in STORE_OPTIONS else 0,
         format_func=lambda x: f"Store: {x}",
         label_visibility="collapsed",
-        key="header_store_selector"
+        key="header_store_selector",
+        on_change=load_store_context
     )
-    if selected_store != st.session_state.active_store:
-        st.session_state.active_store = selected_store
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": f"🔄 **Switched active context to Store #{selected_store}.** How can I assist you with this store?",
-            "timestamp": time.strftime("%H:%M"),
-            "blocked": False
-        })
-        st.rerun()
+
+# ---------------------------------------------------------------------------
+# Major Outages / MIMs Alert
+# ---------------------------------------------------------------------------
+if st.session_state.get("active_mims"):
+    for mim in st.session_state.active_mims:
+        mim_id = mim['number'].replace("MIM", "")
+        mim_title = mim['short_description']
+        with st.container(border=True):
+            col_left, col_right = st.columns([3, 1])
+            with col_left:
+                st.markdown(f"⚠️ **Active Outage: {mim_title} (MIM-{mim_id})**")
+                st.caption(mim.get('description', ''))
+            with col_right:
+                btn_clicked = st.button(
+                    "Match My Store",
+                    key=f"report_mim_button_{mim_id}",
+                    use_container_width=True
+                )
+            if btn_clicked:
+                import logging
+                logging.info(f"[MOCK TRACKING] Store {st.session_state.active_store} reported experiencing MIM {mim['number']}")
+                print(f"[MOCK TRACKING] Store {st.session_state.active_store} reported experiencing MIM {mim['number']}")
+                st.success("Linked to master incident.")
 
 # ---------------------------------------------------------------------------
 # Welcome message (injected once)
@@ -1913,10 +2347,9 @@ if not st.session_state.messages:
     st.session_state.messages.append({
         "role": "assistant",
         "content": (
-            "Hello! I am chipLLM, your restaurant tech support virtual engineer. "
-            "I'll help you troubleshoot on-site issues and if we can't resolve it here, "
-            "I'll create a support ticket or get you over to a live chat agent.\n\n"
-            "Please describe your issue."
+            "Hi there! I'm Chip, your restaurant tech support engineer. "
+            "Let me know what's acting up or what case status you need to check, "
+            "and we'll get it sorted out."
         ),
         "timestamp": time.strftime("%H:%M"),
         "blocked": False
@@ -1928,7 +2361,7 @@ if not st.session_state.messages:
 
 for i, msg in enumerate(st.session_state.messages):
     role = msg["role"]
-    avatar = "👤" if role == "user" else "🤖"
+    avatar = "👤" if role == "user" else "👨‍💻"
     
     with st.chat_message(role, avatar=avatar):
         if msg.get("blocked", False):
@@ -1940,24 +2373,145 @@ for i, msg in enumerate(st.session_state.messages):
         else:
             display_content = msg["content"]
             if role == "assistant":
-                display_content = clean_assistant_message(display_content)
+                display_content = clean_assistant_message(display_content, msg_idx=i)
             st.markdown(display_content, unsafe_allow_html=True)
+            
+            # Render optional image attachment if present in the message
+            if msg.get("attachment_b64"):
+                st.markdown(
+                    f'<div style="margin-top: 12px; border-radius: 12px; overflow: hidden; max-width: 320px; '
+                    f'border: 1px solid rgba(255, 255, 255, 0.08); background-color: #161720; '
+                    f'box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35); transition: all 0.2s ease;">'
+                    f'  <img src="{msg["attachment_b64"]}" style="width: 100%; height: auto; display: block; max-height: 240px; object-fit: contain; background: #0f1016;" />'
+                    f'  <div style="padding: 8px 12px; font-size: 11px; color: #8892a4; font-weight: 600; '
+                    f'border-top: 1px solid rgba(255, 255, 255, 0.06); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; display: flex; align-items: center; gap: 6px;">'
+                    f'    <span>📎</span> {msg.get("attachment_name", "Attachment")}'
+                    f'  </div>'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
 
         st.markdown(f'<div class="msg-time">{msg.get("timestamp", "")}</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# Live Agent Franklin connection gate
+# Extra Context Form (Stage 2 of Live Agent Escalation)
+# ---------------------------------------------------------------------------
+def render_extra_context_form() -> None:
+    """
+    Renders an inline form to gather additional notes/context from the user
+    before escalating to live technician Chip.
+    """
+    st.markdown(
+        '<div style="background: rgba(218, 41, 28, 0.10); border: 1px solid rgba(218, 41, 28, 0.45); '
+        'border-left: 4px solid var(--accent); padding: 12px 16px; border-radius: 8px; '
+        'margin: 8px 0 12px; font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
+        '📋 <b>Support Queue Transfer Staging</b>'
+        '</div>',
+        unsafe_allow_html=True
+    )
+    
+    with st.form("extra_context_form", border=True):
+        user_notes = st.text_area(
+            "Is there any other information you can provide to the support engineer? (When the problem started, other troubleshooting that has been attempted)",
+            placeholder="e.g. Device stopped working after a new version rollout. The screen shows error 067.",
+            key="escalation_user_notes_input"
+        )
+        
+        uploaded_image = st.file_uploader(
+            "Attach a photo of the physical damage / issue (optional)",
+            type=["png", "jpg", "jpeg"],
+            key="escalation_image_upload"
+        )
+        
+        submitted = st.form_submit_button("Submit & Transfer to Live Queue", use_container_width=True)
+        
+    if submitted:
+        notes_str = user_notes.strip() if user_notes.strip() else "None provided."
+        logger.info("Stage 2 extra context form submitted. Notes: %s", notes_str)
+        st.session_state.current_triage["User Escalation Notes"] = notes_str
+        
+        attachment_b64 = None
+        attachment_name = None
+        if uploaded_image is not None:
+            base64_url = file_to_base64_data_url(uploaded_image)
+            if base64_url:
+                st.session_state.current_triage["Attachment Base64"] = base64_url
+                st.session_state.current_triage["Attachment Name"] = uploaded_image.name
+                attachment_b64 = base64_url
+                attachment_name = uploaded_image.name
+        
+        # Append User's Escalation Handoff response as a chat message
+        user_msg_content = f"**Additional Handoff Notes:** {notes_str}"
+        if attachment_name:
+            user_msg_content += f"\n\n📎 **Attachment:** `{attachment_name}`"
+            
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_msg_content,
+            "timestamp": time.strftime("%H:%M"),
+            "blocked": False,
+            "attachment_b64": attachment_b64,
+            "attachment_name": attachment_name
+        })
+        
+        st.session_state.escalation_stage = "connected"
+        st.session_state.live_agent_pending_connection = True
+        st.rerun()
+
+if st.session_state.get("escalation_stage") == "acknowledged":
+    with st.chat_message("assistant", avatar="👨‍💻"):
+        render_extra_context_form()
+
+# ---------------------------------------------------------------------------
+# Live Agent connection gate
 # ---------------------------------------------------------------------------
 if st.session_state.get("live_agent_pending_connection", False):
     st.session_state.live_agent_pending_connection = False
-    time.sleep(2)
+    agent_name = st.session_state.live_agent_name
+    
+    # Send the first greeting immediately
+    greeting_msg = f"Hello, my name is {agent_name}. I am reviewing your case now."
     st.session_state.messages.append({
         "role": "assistant",
-        "content": "Hello, my name is Franklin. I am reviewing your case now.",
+        "content": greeting_msg,
         "timestamp": time.strftime("%H:%M"),
         "blocked": False
     })
+    
+    st.session_state.live_agent_pending_question = True
     st.rerun()
+
+if st.session_state.get("live_agent_pending_question", False):
+    st.session_state.live_agent_pending_question = False
+    agent_name = st.session_state.live_agent_name
+    
+    # Simulate a realistic 10 second wait where they read the case history
+    with st.spinner(f"{agent_name} is reviewing the case details (takes about 10 seconds)..."):
+        time.sleep(10)
+        
+        try:
+            logger.info("Invoking Gemini for live agent %s's question.", agent_name)
+            client = ChipLLMClient()
+            user_notes = st.session_state.current_triage.get("User Escalation Notes", "None provided.")
+            
+            question_msg = client.generate_agent_question(
+                triage_data=st.session_state.current_triage,
+                messages=st.session_state.messages,
+                user_notes=user_notes,
+                agent_name=agent_name
+            )
+            question_msg = question_msg.strip() if question_msg else ""
+        except Exception as exc:
+            logger.exception("Failed to generate agent question. Using fallback.")
+            question_msg = f"Thanks for hanging tight. Can you confirm exactly what symptoms you're seeing on the screen?"
+            
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": question_msg,
+            "timestamp": time.strftime("%H:%M"),
+            "blocked": False
+        })
+        st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -1991,14 +2545,7 @@ if st.session_state.get("show_restart_chat_btn", False) and not st.session_state
     )
     st.markdown("<div class='restart-btn-marker'></div>", unsafe_allow_html=True)
     if st.button("🔄 Click Here to Restart Chat", use_container_width=True, key="restart_chat_after_ticket"):
-        st.session_state.messages = []
-        st.session_state.ticket_metadata = None
-        st.session_state.escalation_triggered = False
-        st.session_state.ticket_collection_active = False
-        st.session_state.rag_hits = {}
-        st.session_state.manual_ticket_flow = False
-        st.session_state.show_restart_chat_btn = False
-        reset_triage_state()
+        st.session_state.needs_reset = True
         st.rerun()
 
 # ---------------------------------------------------------------------------
@@ -2007,7 +2554,8 @@ if st.session_state.get("show_restart_chat_btn", False) and not st.session_state
 
 if st.session_state.ticket_collection_active:
     is_live_agent = st.session_state.get("ticket_collection_is_agent", False)
-    render_ticket_collection_form(is_live_agent=is_live_agent)
+    with st.chat_message("assistant", avatar="👨‍💻"):
+        render_ticket_collection_form(is_live_agent=is_live_agent)
 
 # ---------------------------------------------------------------------------
 # Device Detail & Priority Forms (escalation triage flow)
@@ -2017,10 +2565,11 @@ _triage_active = st.session_state.get("escalation_triage_active", False)
 _triage_step = st.session_state.get("escalation_triage_step")
 
 if _triage_active:
-    if _triage_step == "priority_form":
-        render_priority_form()
-    elif _triage_step == "device_form":
-        render_device_detail_form()
+    with st.chat_message("assistant", avatar="👨‍💻"):
+        if _triage_step == "priority_form":
+            render_priority_form()
+        elif _triage_step == "device_form":
+            render_device_detail_form()
 
 # ---------------------------------------------------------------------------
 # Suggestion Chips Rendering Block
@@ -2032,6 +2581,7 @@ if "suggestion_click" not in st.session_state:
 _show_chips = (
     not st.session_state.ticket_collection_active
     and _triage_step not in ["device_form", "priority_form"]
+    and not st.session_state.get("escalated", False)
 )
 if _show_chips:
     last_msg = st.session_state.messages[-1] if st.session_state.messages else None
@@ -2053,9 +2603,11 @@ if _show_chips:
 
 chat_placeholder = "Describe the issue… (e.g. 'Printer jammed')" if len(st.session_state.messages) <= 1 else "Type here"
 
+is_connected_stage = st.session_state.get("escalation_stage") == "connected"
 chat_val = st.chat_input(
     placeholder=chat_placeholder,
     key="chat_input",
+    disabled=st.session_state.get("escalated", False) and not is_connected_stage,
 )
 
 user_input = None
@@ -2066,8 +2618,18 @@ elif chat_val:
     user_input = chat_val
 
 if user_input:
+    logger.info("Received user chat input: %s", user_input)
     ts_now = time.strftime("%H:%M")
     lower_input = user_input.lower()
+    
+    # Detect cafe issues and route immediately to live human agent
+    if is_cafe_issue(user_input) and not st.session_state.get("escalated", False):
+        logger.info("Cafe issue detected: %s. Routing to live human agent.", user_input)
+        trigger_live_agent_flow(user_input)
+
+    # Global human agent escalation interceptor
+    if check_escalation_intent(user_input):
+        trigger_live_agent_flow(user_input)
     
     # Intercept commands like "start over"
     if "start over" in lower_input or "restart" in lower_input:
@@ -2103,15 +2665,34 @@ if user_input:
             
         elif step == "device_form":
             # User typed in chat while device form was shown — treat as skip
+            logger.info("Device detail form skipped by user input: %s. Setting model/serial to Unknown.", user_input)
             st.session_state.triage_model = "Unknown"
             st.session_state.triage_serial = "Unknown"
+            st.session_state.current_triage["Device Model"] = "Unknown"
+            st.session_state.current_triage["Serial Number"] = "Unknown"
             st.session_state.escalation_triage_active = False
             st.session_state.escalation_triage_step = "complete"
             st.session_state.ticket_collection_active = True
             st.rerun()
         
     # Intercept live agent keywords
-    elif any(kw in lower_input for kw in ["live agent", "human", "agent", "talk to an agent", "talk to a human"]):
+    elif check_escalation_intent(user_input):
+        trigger_live_agent_flow(user_input)
+        
+    # Intercept no-match stopper choices
+    elif lower_input in ["open a support ticket", "open support ticket"]:
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_input,
+            "timestamp": ts_now,
+            "blocked": False
+        })
+        st.session_state.manual_ticket_flow = True
+        st.session_state.ticket_collection_active = True
+        st.session_state.ticket_collection_is_agent = False
+        st.rerun()
+        
+    elif lower_input in ["live chat with an agent", "live chat", "chat with an agent"]:
         trigger_live_agent_flow(user_input)
         
     # Intercept case routing choices
@@ -2159,78 +2740,110 @@ if user_input:
             }
         )
 
-        # --- Layer 1: Guardrails -----------------------------------------------
-        guard = check_guardrails(user_input)
-
-        if guard.blocked:
-            st.session_state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": guard.refusal_text,
-                    "timestamp": ts_now,
-                    "blocked": True,
-                }
-            )
-            st.rerun()
-
-        # --- Layer 2: Escalation keyword check ---------------------------------
-        if guard.escalation_triggered:
-            start_escalation_triage()
-            st.rerun()
-
-        # --- Layer 3: Dynamic HTML RAG retrieval -------------------------------
-        relevant_playbooks = retrieve_context(user_input, top_k=1)
-        rag_context: str | None = None
-        rag_title: str | None = None
-
-        if relevant_playbooks:
-            playbook = relevant_playbooks[0]
-            rag_context = playbook["content"]
-            rag_title = playbook["title"]
+        is_connected_stage = st.session_state.get("escalation_stage") == "connected"
+        if is_connected_stage:
+            st.session_state.live_agent_chat_turns = st.session_state.get("live_agent_chat_turns", 0) + 1
+            guard_blocked = False
+            rag_context = None
+            rag_title = None
         else:
-            # No RAG match — only route to manual ticket on the FIRST user message
-            # (mid-flow replies like "No" or "yes" should not trigger this)
-            num_user_msgs = sum(1 for m in st.session_state.messages if m["role"] == "user")
-            if num_user_msgs <= 1:
-                _ts_no_rag = time.strftime("%H:%M")
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": (
-                        "I wasn't able to find a matching troubleshooting playbook for that issue in our knowledge base. "
-                        "Let me open a support ticket so our team can assist you directly."
-                    ),
-                    "timestamp": _ts_no_rag,
-                    "blocked": False,
-                })
-                st.session_state.manual_ticket_flow = True
-                st.session_state.ticket_collection_active = True
-                st.session_state.ticket_collection_is_agent = False
+            # --- Layer 1: Guardrails -----------------------------------------------
+            guard = check_guardrails(user_input)
+
+            if guard.blocked:
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": guard.refusal_text,
+                        "timestamp": ts_now,
+                        "blocked": True,
+                    }
+                )
                 st.rerun()
-            # else: fall through to LLM call with no RAG context
+
+            # --- Layer 2: Escalation keyword check ---------------------------------
+            if guard.escalation_triggered:
+                start_escalation_triage()
+                st.rerun()
+
+            # --- Layer 3: Dynamic HTML RAG retrieval -------------------------------
+            logger.info("Attempting RAG retrieval for input: '%s'", user_input)
+            relevant_playbooks = retrieve_context(user_input, top_k=1)
+            rag_context: str | None = None
+            rag_title: str | None = None
+
+            if relevant_playbooks:
+                playbook = relevant_playbooks[0]
+                rag_context = playbook["content"]
+                rag_title = playbook["title"]
+                logger.info("RAG playbook hit: '%s'", rag_title)
+            else:
+                logger.info("RAG playbook miss (no match found).")
+                # No RAG match — only show the choice stopper on the FIRST user message
+                # (mid-flow replies like "No" or "yes" should not trigger this)
+                num_user_msgs = sum(1 for m in st.session_state.messages if m["role"] == "user")
+                if num_user_msgs <= 1 and not is_greeting_or_small_talk(user_input):
+                    _ts_no_rag = time.strftime("%H:%M")
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": (
+                            "I wasn't able to find a matching troubleshooting playbook for that issue in our knowledge base. "
+                            "How would you like to proceed? (Open a support ticket/Live Chat with an Agent)"
+                        ),
+                        "timestamp": _ts_no_rag,
+                        "blocked": False,
+                    })
+                    st.rerun()
+                # else: fall through to LLM call with no RAG context
 
         # --- Layer 4: LLM call (streaming) -------------------------------------
-        client = ChipLLMClient()
-
-        with st.chat_message("assistant", avatar="🤖"):
+        with st.chat_message("assistant", avatar="👨‍💻"):
             full_response = ""
             response_placeholder = st.empty()
 
             try:
+                logger.info("Starting Gemini API streaming response.")
+                client = ChipLLMClient()
+                is_connected_stage = st.session_state.get("escalation_stage") == "connected"
+                sys_inst = None
+                if is_connected_stage:
+                    agent_name = st.session_state.live_agent_name
+                    turns = st.session_state.get("live_agent_chat_turns", 0)
+                    if turns >= 2:
+                        sys_inst = (
+                            f"You are {agent_name}, a highly experienced, casual, and friendly live tech support engineer at the restaurant chain.\n"
+                            f"The user is a restaurant manager who has just been connected to you.\n"
+                            f"This conversation has gone on for a few turns. You must now politely direct the user to the formal ticket creation flow "
+                            f"to schedule a field dispatch or a deeper investigation by hardware specialists.\n"
+                            f"Explain to them clearly and warmly that we need to open a support ticket to track this issue, and that you are opening the form for them right now.\n"
+                            f"Keep the message concise and under 60 words."
+                        )
+                    else:
+                        sys_inst = (
+                            f"You are {agent_name}, a highly experienced, casual, and friendly live tech support engineer at the restaurant chain.\n"
+                            f"The user is a restaurant manager who has just been connected to you.\n"
+                            f"Continue the conversation in character as {agent_name}. Keep your natural, casual, empathetic, and highly technical tone.\n"
+                            f"Use phrases like 'Hi there!' or 'Thanks for that detail,' when appropriate, and be extremely helpful.\n"
+                            f"Keep responses relatively concise and do not repeat your initial greeting."
+                        )
                 for chunk in client.stream_response(
                     messages=st.session_state.messages,
                     rag_context=rag_context,
+                    system_instruction=sys_inst,
                 ):
                     full_response += chunk
                     response_placeholder.markdown(f"{full_response}▌")
 
                 response_placeholder.markdown(full_response)
+                logger.info("Completed Gemini API streaming response. Response length: %d chars", len(full_response))
 
             except Exception as exc:
+                logger.exception("Gemini API streaming failed")
                 full_response = (
-                    f"⚠️ **LLM connectivity issue:** `{exc}`\n\n"
-                    "Verify that ADC is active (`gcloud auth application-default login`) "
-                    "and that `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` are set correctly."
+                    "⚠️ **An unexpected backend error occurred.** Please try again, "
+                    "or type 'escalate' to route this issue to our support team."
                 )
+                response_placeholder.markdown(full_response)
 
         # --- Store assistant response -----------------------------------------
         msg_idx = len(st.session_state.messages)
@@ -2249,8 +2862,15 @@ if user_input:
 
         # --- Post-response: check if response triggers escalation -------------
         if not st.session_state.ticket_collection_active and not st.session_state.get("escalation_triage_active", False):
-            post_guard = check_guardrails(full_response)
-            if post_guard.escalation_triggered:
-                start_escalation_triage(append_welcome=False)
+            if "how would you like to proceed" not in full_response.lower():
+                post_guard = check_guardrails(full_response)
+                if post_guard.escalation_triggered:
+                    start_escalation_triage(append_welcome=False)
+
+        # If they are connected and chat turns >= 2, trigger ticket creation flow
+        if is_connected_stage and st.session_state.get("live_agent_chat_turns", 0) >= 2:
+            st.session_state.manual_ticket_flow = True
+            st.session_state.ticket_collection_active = True
+            st.session_state.ticket_collection_is_agent = False
 
         st.rerun()

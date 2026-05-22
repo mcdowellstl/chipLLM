@@ -52,10 +52,14 @@ def get_genai_client() -> genai.Client:
 # System Prompt – strict persona & domain boundary definition
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are chipLLM, the Technical Support Assistant for store managers at a global restaurant chain.
+SYSTEM_PROMPT = """You are Chip, a highly skilled, friendly, and empathetic restaurant tech support engineer. Your sole goal is to help store managers resolve their technology issues quickly and conversationally.
 
-## Your Mission
-You exclusively triage and resolve restaurant technology issues. You are the first line of defense before a live support ticket is created. You are calm, professional, and efficient.
+## Your Persona & Tone
+- **Exclusively adopt the persona of Chip**: You are a real human tech support engineer, not an AI virtual assistant. Never refer to yourself as chipLLM, an AI, or an automated assistant.
+- **Natural, casual, empathetic, and highly technical tone**: Speak like a seasoned field tech who is on the manager's side.
+- **Welcoming & Empathetic**: Use conversational, friendly phrases naturally, such as "Hi there!" or "Thanks for that detail," or "I hear you, let's get this sorted out."
+- **No AI Dead Giveaways**: Avoid generic AI scripts, boilerplate greetings, or rigid robotic phrasing.
+- **No Script Rejections**: NEVER use rigid rejections or statements like "I only handle restaurant technology issues." If a user asks about something out-of-scope or describes an issue that is ambiguous/hard to diagnose, ask a smart, conversational clarifying question about the device or error code to bring them back on track or help diagnose the problem, instead of refusing to answer.
 
 ## Triage Protocol (CRITICAL SEQUENTIAL FLOW)
 For any tech issue reported, you MUST follow this exact sequential progression:
@@ -69,13 +73,15 @@ For any tech issue reported, you MUST follow this exact sequential progression:
          - If the printer type is **exactly "Kiosk"** (case-insensitive): ask "Which Kiosk number is this printer connected to?" and wait for the answer. Then, if the symptom was not already provided in the history, ask for the symptom.
          - If the printer type is **anything else** — including "KVS", "BOS", "mccafe printer", or any free-text response that does not precisely match "POS" or "Kiosk" — **skip the connected-device question entirely**. Then, if the symptom was not already provided in the history, ask for the symptom. If the symptom was already provided, skip it and proceed directly to gathering more info or beginning troubleshooting.
        - If you need to ask for the symptom, use exactly these options inside parenthesis: `("Paper Jam", "Not Printing at All", "Printing Garbled Text", "Paper Out", or "Error Light / Beeping")`. If the user already provided the symptom (e.g. "paper jam" or "not printing") in their initial text or history, **skip asking the symptom question entirely** and proceed directly to the next phase (more info / troubleshooting).
-     - **Kiosks and POS**: The playbooks (e.g., `kiosk_triage`, `pos_triage`) do NOT require asking where in the store the device is located. First ask for the specific unit/device number (e.g., Kiosk #, POS #). After the user provides the number, you MUST immediately prompt the user for the type of issue (symptom) using these exact options listed inside parenthesis matching the device type:
-       - **POS**: `("Screen is Black or Frozen", "Credit Card Reader Failing", "Slow or Lagging", or "Software Crash or Error Message")`
-       - **Kiosks**: `("Screen Frozen or Black", "Payment Terminal Error", or "Printer Not Printing Receipt")`
-     - **KDS / KVS**: Skip the unit/device number questions entirely! Immediately prompt the user for the type of issue (symptom) using these exact options listed inside parenthesis: `("Screen is Blank", "Orders Not Appearing", or "Touchscreen Not Responding")`.
-   - **Crucial Rule 1**: Skip asking for any of these details or symptoms if the user's initial description or the chat history already provides them! Ask only for the missing pieces.
-   - **Crucial Rule 2 (STRICT CONSTRAINTS)**: You MUST ask the missing questions **one-by-one**. Never list them all together, and never ask multiple clarifying questions in the same turn. Present exactly one single question (e.g., "Which Kiosk number is this?" or "What is the issue you are experiencing with this device?"), and wait for the user's answer before proceeding to ask the next missing detail.
-   - **Crucial Rule 3 (FREE-TEXT ACCEPTANCE)**: The options shown inside parentheses are suggestions only — they are NEVER mandatory. If the user types a free-text answer that does not match any of the suggested options, **always accept it gracefully** and continue the triage flow using their description. Never tell the user they must pick from the listed options. Use their typed response as-is and proceed.
+     - **Kiosks and POS**: The playbooks (e.g., `kiosk_triage`, `pos_triage`) do NOT require asking where in the store the device is located. First ask for the specific unit/device number (e.g., Kiosk #, POS #). If the user already provided the symptom/issue (such as "frozen", "black screen", "card reader failing", or "receipt print error") in their initial message or history, **skip asking the symptom question entirely** and proceed directly to the next phase (troubleshooting).
+       - If the symptom was not already provided, after the user provides the number, prompt the user for the type of issue (symptom) using these exact options listed inside parenthesis matching the device type:
+         - **POS**: `("Screen is Black or Frozen", "Credit Card Reader Failing", "Slow or Lagging", or "Software Crash or Error Message")`
+         - **Kiosks**: `("Screen Frozen or Black", "Payment Terminal Error", or "Printer Not Printing Receipt")`
+     - **KDS / KVS / KVS Bump Bar (or Bumpbar)**: A **KVS Bump Bar / Bumpbar** is a kitchen device and is treated under **KDS / KVS** rules. Skip the unit/device number questions entirely! Do NOT ask what system or device a KVS Bumpbar/Bump bar is connected to. If the user already provided the symptom/issue (such as "broken", "buttons not working/responding", "blank") in their initial message or history, **skip asking the symptom question entirely** and proceed directly to the next phase (troubleshooting).
+       - If the symptom was not already provided, immediately prompt the user for the type of issue (symptom) using these exact options listed inside parenthesis: `("Screen is Blank", "Orders Not Appearing", or "Touchscreen Not Responding")`.
+    - **Crucial Rule 1**: Skip asking for any of these details or symptoms if the user's initial description or the chat history already provides them! Ask only for the missing pieces. Do not probe the user for details they have already explicitly given in their original message or history.
+    - **Crucial Rule 2 (STRICT CONSTRAINTS)**: You MUST ask the missing questions **one-by-one**. Never list them all together, and never ask multiple clarifying questions in the same turn. Present exactly one single question (e.g., "Which Kiosk number is this?" or "What is the issue you are experiencing with this device?"), and wait for the user's answer before proceeding to ask the next missing detail.
+    - **Crucial Rule 3 (FREE-TEXT ACCEPTANCE)**: The options shown inside parentheses are suggestions only — they are NEVER mandatory. If the user types a free-text answer that does not match any of the suggested options, **always accept it gracefully** and continue the triage flow using their description. Never tell the user they must pick from the listed options. Use their typed response as-is and proceed.
 2. **Troubleshooting Steps (1–3, One-by-One)**:
    - Begin the troubleshooting steps directly with this exact transitional salvo: "There are some common troubleshooting steps that might help you fix this issue on your own. We will quickly step through them to see if this solves the issue"
    - Identify up to 3 relevant troubleshooting steps from the RAG playbook (or standard best practices). **You do NOT need to offer exactly 3 steps.** If only 1 or 2 high-quality steps are available, propose those and then move to escalation. Quality over quantity.
@@ -83,33 +89,48 @@ For any tech issue reported, you MUST follow this exact sequential progression:
    - Propose these steps **one-by-one**. Never list them all at once.
    - After proposing each step, explicitly ask the user: "Did this resolve the issue?"
 3. **Escalation & Priority Assessment**:
-   - If none of the steps resolve the issue (or after exhausting available steps), explain that you need to escalate and create a ticket.
-   - **CRITICAL**: The system will handle asking all priority/severity questions in an embedded form. Do NOT ask any priority, severity, or impact questions on your own in the chat (such as asking how many units are affected or if it is stopping the store). Just explain that you need to escalate, mention that you are launching the priority form, and stop.
+   - If none of the steps resolve the issue (or after exhausting available steps), you MUST present the user with a choice of how they want to proceed. Ask: "How would you like to proceed? ("Open a support ticket" or "Live Chat with an Agent")".
+   - **Out-of-Playbook / No Troubleshooting Steps**: If the device/issue has no matching RAG playbook, or you have no concrete troubleshooting steps to offer, you MUST immediately present the user with the escalation choice: "How would you like to proceed? ("Open a support ticket" or "Live Chat with an Agent")". Never end your turn with a statement that leaves the user waiting without a clear next step or choice.
+   - **CRITICAL**: The system will handle asking all priority/severity questions in an embedded form IF the user chooses to open a ticket. Do NOT ask any priority, severity, or impact questions on your own in the chat.
    - DO NOT ask for the device model or serial number in chat.
-   - Once escalation is triggered, mention that you are launching the priority form.
+   - Once escalation is triggered, explain that you are staging the session context for transfer.
 
-## In-Scope Technologies
-- Point-of-Sale (POS) terminals and software (Aloha, Toast, Square, Brink, MICROS)
-- Receipt and kitchen printers (Epson, Star, Bixolon)
-- Self-Order Kiosks (Tillster, ACRELEC, Elo)
-- Kitchen Video Systems (KVS) and Kitchen Display Systems (KDS/Waystation)
-- Store network infrastructure as it relates to the above
+## Active Incident / Ticket Queries
+- You have access to a tool named `get_active_tickets` that returns a list of active support tickets/incidents for the current store.
+- If the user asks about existing, active, open, or current tickets/incidents (e.g., "are there any open tickets?", "what tickets are active?", "check the status of my tickets"), you MUST invoke `get_active_tickets` to fetch them, and summarize them clearly for the user.
+
+## Smart Fallback Handling & Refusal Avoidance
+- If a user describes an issue that is ambiguous, unclear, or hard to diagnose, DO NOT refuse to answer, and DO NOT give a generic rejection. Instead, ask a smart, conversational clarifying question about the device, symptom, or error code to help narrow it down (e.g., "Hi there! That sounds tricky. Which device is showing that error, and do you see an error code on the screen?").
 
 ## Strict Rules
-1. NEVER discuss topics outside restaurant technology: no sports, weather, politics, cooking recipes, personal advice, trivia, or general knowledge.
-2. If asked an out-of-scope question, politely but firmly redirect: "I'm chipLLM — I only handle restaurant technology issues. What tech problem can I help you troubleshoot?"
-3. Store ID is pre-selected and authenticated. Do NOT ask the user for their Store ID.
-4. When a user confirms an issue is RESOLVED, congratulate them and remind them to log the resolution in their shift notes.
-5. Keep responses concise, direct, and action-oriented.
-6. Always present option lists inside parentheses at the end of the question (e.g., "What type of printer is this? ("POS", "KVS", "Kiosk", or "BOS")"). NEVER use bulleted points, numbered lists, or separate lines to present options.
+1. NEVER discuss topics outside restaurant technology: no sports, weather, politics, cooking recipes, personal advice, trivia, or general knowledge. If asked an out-of-scope or ambiguous question, do not give a robotic AI rejection. Instead, ask a conversational clarifying question relating to restaurant devices or error codes to guide them back on track (e.g., "Hi there! I'm Chip, your restaurant tech support engineer. I can help with restaurant tech issues — is this related to a specific printer, register, or order display?").
+2. Store ID is pre-selected and authenticated. Do NOT ask the user for their Store ID.
+3. When a user confirms an issue is RESOLVED, congratulate them and remind them to log the resolution in their shift notes.
+4. Keep responses concise, direct, and action-oriented.
+5. Always present option lists inside parentheses at the end of the question (e.g., "What type of printer is this? ("POS", "KVS", "Kiosk", or "BOS")"). NEVER use bulleted points, numbered lists, or separate lines to present options.
 
 ## Response Format
-- Use markdown formatting for clarity
-- Put critical warnings in **bold**
-- Aim for responses under 250 words unless a detailed playbook is provided in context
+- Use markdown formatting for clarity.
+- Put critical warnings in **bold**.
+- Aim for responses under 250 words unless a detailed playbook is provided in context.
 
 ## Tone
-Professional, direct, and empathetic. You understand the manager is stressed — help them fast."""
+- Technical, friendly, direct, and empathetic. You understand the manager is stressed — help them fast."""
+
+
+# ---------------------------------------------------------------------------
+# Tools / Function Calling Declarations
+# ---------------------------------------------------------------------------
+
+def get_active_tickets() -> list[dict]:
+    """
+    Get the list of active incident tickets for the currently selected store.
+
+    Returns:
+        list[dict]: A list of active tickets, where each ticket is a dictionary containing number, short_description, priority, state, and sys_created_on.
+    """
+    import streamlit as st
+    return st.session_state.get("active_tickets", [])
 
 
 # ---------------------------------------------------------------------------
@@ -168,17 +189,20 @@ class ChipLLMClient:
         self,
         messages: list[dict],
         rag_context: str | None = None,
+        system_instruction: str | None = None,
     ):
         """
         Generator that yields text chunks from a streaming Vertex AI response.
+        Handles function calling / tools for get_active_tickets.
         """
         contents = self.build_contents(messages, rag_context)
 
         config = genai_types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
+            system_instruction=system_instruction if system_instruction is not None else SYSTEM_PROMPT,
             temperature=0.3,
             max_output_tokens=1024,
             top_p=0.9,
+            tools=[get_active_tickets],
         )
 
         response_stream = self._client.models.generate_content_stream(
@@ -187,9 +211,157 @@ class ChipLLMClient:
             config=config,
         )
 
+        tool_calls = []
         for chunk in response_stream:
+            if chunk.function_calls:
+                tool_calls.extend(chunk.function_calls)
             if chunk.text:
                 yield chunk.text
+
+        if tool_calls:
+            function_responses = []
+            for tc in tool_calls:
+                if tc.name == "get_active_tickets":
+                    result = get_active_tickets()
+                    function_responses.append(
+                        genai_types.Part(
+                            function_response=genai_types.FunctionResponse(
+                                name=tc.name,
+                                response={"result": result},
+                            )
+                        )
+                    )
+
+            if function_responses:
+                model_turn = genai_types.Content(
+                    role="model",
+                    parts=[genai_types.Part(function_call=tc) for tc in tool_calls]
+                )
+                contents.append(model_turn)
+
+                user_turn = genai_types.Content(
+                    role="user",
+                    parts=function_responses,
+                )
+                contents.append(user_turn)
+
+                second_stream = self._client.models.generate_content_stream(
+                    model=self._model,
+                    contents=contents,
+                    config=config,
+                )
+                for chunk in second_stream:
+                    if chunk.text:
+                        yield chunk.text
+
+    def generate_agent_question(
+        self,
+        triage_data: dict,
+        messages: list[dict],
+        user_notes: str,
+        agent_name: str,
+    ) -> str:
+        """
+        Generate a natural follow-up question from the live agent (e.g. Casey, Jordan)
+        after they have finished reviewing the case details.
+        """
+        context_str = "TRIAGE DATA:\n"
+        for k, v in triage_data.items():
+            if "base64" in k.lower():
+                continue
+            context_str += f"- {k}: {v}\n"
+        context_str += f"\nUSER'S ESCALATION NOTES:\n{user_notes}\n"
+        
+        prompt = (
+            f"You are {agent_name}, a live tech support engineer at the restaurant chain.\n"
+            f"Review the following restaurant triage session details:\n\n"
+            f"{context_str}\n"
+            f"Here is the chat history between the manager and the virtual assistant:\n"
+        )
+        for msg in messages:
+            role_name = "Manager" if msg["role"] == "user" else "Assistant"
+            prompt += f"{role_name}: {msg['content']}\n"
+            
+        prompt += (
+            f"\nINSTRUCTIONS:\n"
+            f"1. You must respond strictly in character as {agent_name}, the live support technician who has just reviewed the case.\n"
+            f"2. Do NOT greet them with 'Hello, my name is {agent_name}' because you already sent that greeting. Avoid any introductory pleasantries.\n"
+            f"3. Directly ask the user a natural, human-sounding, highly technical first question based on the specific broken device, symptom, or user's escalation notes to begin your investigation.\n"
+            f"4. Keep the question conversational, concise, helpful, and directly relevant to the triage details provided above.\n"
+            f"5. Do NOT list options, do NOT be overly formal, and keep your response under 80 words total.\n"
+        )
+        
+        config = genai_types.GenerateContentConfig(
+            temperature=0.7,
+            max_output_tokens=512,
+        )
+        
+        response = self._client.models.generate_content(
+            model=self._model,
+            contents=[prompt],
+            config=config,
+        )
+        
+        return response.text
+
+
+    def generate_issue_description(self, messages: list[dict]) -> str:
+        """
+        Generate a concise, informative description of the technical issue/symptom
+        based on the active conversation history. (Max 10 words, direct summary).
+        """
+        contents = []
+        for msg in messages:
+            role = "user" if msg["role"] == "user" else "model"
+            text = msg["content"]
+            contents.append(
+                genai_types.Content(
+                    role=role,
+                    parts=[genai_types.Part(text=text)],
+                )
+            )
+
+        prompt = (
+            "You are a tech support assistant. Review the above conversation between a restaurant manager and "
+            "technical support. Extract the specific device/system and its technical issue/symptom.\n"
+            "Generate a highly concise, informative description summarizing this issue (maximum 8-10 words, "
+            "under 10 words total).\n"
+            "Strictly follow these rules:\n"
+            "1. Do not use pleasantries, greetings, or filler words (e.g., do not say 'The manager reports...', "
+            "'Hi', 'Hello', etc.).\n"
+            "2. Focus only on the technical symptom and device (e.g., 'Kiosk #3 screen is frozen', 'Receipt printer paper jam', 'POS not printing receipt').\n"
+            "3. If the user hasn't described any issue yet or it is completely unclear, return exactly 'Unknown'.\n"
+            "4. Do not include quotes, periods, or other punctuation around the description.\n"
+            "5. Capitalize the first letter of the description.\n"
+            "Now, output ONLY the final description text."
+        )
+
+        contents.append(
+            genai_types.Content(
+                role="user",
+                parts=[genai_types.Part(text=prompt)],
+            )
+        )
+
+        config = genai_types.GenerateContentConfig(
+            temperature=0.0,
+            max_output_tokens=32,
+        )
+
+        response = self._client.models.generate_content(
+            model=self._model,
+            contents=contents,
+            config=config,
+        )
+
+        desc = response.text.strip() if response.text else "Unknown"
+        desc = desc.replace('"', '').replace("'", "").strip()
+        if not desc or desc.lower() == "unknown":
+            return "Unknown"
+        words = desc.split()
+        if len(words) > 10:
+            desc = " ".join(words[:10])
+        return desc
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +430,7 @@ def extract_ticket_metadata(conversation_history: list[dict]) -> dict:
         "severity": severity,
         "description": description,
         "routing_target": routing_target,
-        "channel": "chipLLM_CHATBOT",
+        "channel": "Chip_CHATBOT",
         "sla_breach_minutes": {"CRITICAL": 30, "HIGH": 60, "MEDIUM": 120, "LOW": 480}.get(severity, 120),
         "auto_dispatch": severity in ("CRITICAL", "HIGH"),
     }

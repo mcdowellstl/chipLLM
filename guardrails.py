@@ -1,7 +1,7 @@
 """
 guardrails.py
 -------------
-Layer 1: Fast local middleware guardrails for chipLLM.
+Layer 1: Fast local middleware guardrails for Chip.
 Performs intent classification BEFORE hitting the LLM to save tokens
 and enforce strict domain boundaries.
 """
@@ -57,9 +57,9 @@ _ALL_RESTRICTED: set[str] = (
 
 _REFUSAL_RESPONSE = (
     "⛔ **Topic restricted.** Please ask a store-related support tech question.\n\n"
-    "I'm chipLLM — I only handle restaurant technology issues: "
-    "**POS terminals, receipt printers, self-order kiosks, and kitchen display systems (KDS/KVS)**. "
-    "How can I help you troubleshoot today?"
+    "Hi there! I'm Chip, your restaurant tech support engineer. I focus exclusively on restaurant technology "
+    "like POS terminals, receipt printers, self-order kiosks, and kitchen display systems (KDS/KVS). "
+    "Let me know what device is acting up or what error code you're seeing, and we'll get it sorted out!"
 )
 
 # ---------------------------------------------------------------------------
@@ -67,11 +67,15 @@ _REFUSAL_RESPONSE = (
 # ---------------------------------------------------------------------------
 
 _ESCALATION_KEYWORDS = {
-    "agent", "human", "escalate", "ticket", "servicenow", "genesys",
-    "call center", "supervisor", "manager", "open a ticket", "create ticket",
-    "submit ticket", "raise ticket", "i need help from", "connect me",
+    "agent", "human", "escalate", "servicenow", "genesys",
+    "call center", "open a ticket", "create ticket", "submit ticket", "raise ticket",
+    "open ticket", "new ticket", "escalate ticket", "i need help from", "connect me",
     "live agent", "live support", "real person", "not working still",
     "still broken", "urgent", "down completely", "totally down",
+    "talk to a manager", "talk to the manager", "speak with a manager",
+    "speak with the manager", "escalate to manager", "contact manager",
+    "talk to a supervisor", "talk to the supervisor", "speak with a supervisor",
+    "speak with the supervisor", "escalate to supervisor", "contact supervisor",
 }
 
 _RESOLUTION_KEYWORDS = {
@@ -137,3 +141,85 @@ def check_guardrails(user_message: str) -> GuardrailResult:
         escalation_triggered=escalation_hit,
         resolution_detected=resolution_hit,
     )
+
+
+def is_greeting_or_small_talk(user_message: str) -> bool:
+    """
+    Detect if the user's message is a pure greeting, pleasantry, or simple small-talk,
+    rather than a description of a technical issue.
+    """
+    import re
+    # Clean the message: lowercase, remove punctuation except spaces
+    cleaned = re.sub(r"[^\w\s]", "", user_message.lower()).strip()
+    if not cleaned:
+        return True
+
+    # 1. Check exact phrase matches
+    greeting_phrases = {
+        "hows it going", "how are you", "how are you doing", "how do you do", "nice to meet you",
+        "good morning", "good afternoon", "good evening", "good day", "anyone there",
+        "are you there", "is anyone there", "anybody there", "hello there", "hi there",
+        "hey there", "howdy partner", "howdy chip", "hi chip", "hello chip", "hey chip"
+    }
+    if cleaned in greeting_phrases:
+        return True
+
+    # 2. Check if the message consists entirely of greeting/pleasantry/filler words
+    greeting_words = {
+        "hi", "hello", "hey", "howdy", "hola", "greetings", "morning", "afternoon", "evening",
+        "yo", "whats up", "sup", "test", "testing", "chip", "there", "partner", "buddy",
+        "friend", "man", "dude", "sir", "maam", "everyone", "all", "here", "good", "whats", "up",
+        "what", "is"
+    }
+    words = cleaned.split()
+    if all(word in greeting_words for word in words):
+        return True
+
+    # 3. If it's very short (1-2 words) and contains at least one greeting word,
+    # and doesn't contain device-specific keywords, treat it as a greeting.
+    device_keywords = {
+        "pos", "kiosk", "printer", "kvs", "kds", "bumpbar", "bump bar", "screen",
+        "register", "terminal", "receipt", "paper", "jam", "drawer", "cash",
+        "card", "payment", "reader", "scanner", "network", "offline", "wifi",
+        "internet", "power", "cable", "cord", "button", "buttons", "monitor",
+        "controller", "waystation"
+    }
+    if len(words) <= 2:
+        has_greeting = any(word in greeting_words for word in words)
+        has_device = any(word in device_keywords for word in words)
+        if has_greeting and not has_device:
+            return True
+
+    return False
+
+
+def is_cafe_issue(user_message: str) -> bool:
+    """
+    Detect if the user's message is related to a cafe, McCafe, coffee, or espresso issue
+    which is different from the normal tech we cover, so we can route them immediately
+    to chat with a human.
+    """
+    import re
+    cleaned = re.sub(r"[^\w\s\-]", "", user_message.lower()).strip()
+    if not cleaned:
+        return False
+        
+    cafe_keywords = {
+        "mccafe", "cafe", "coffee", "espresso", "latte", "cappuccino", "frappe",
+        "macchiato", "americano", "beverage", "brewer", "bunnomatic", "blender",
+        "drink", "frappuccino", "tea", "caffeine"
+    }
+    
+    # Check word boundaries using split
+    words = re.split(r"[\s\-]+", cleaned)
+    if any(word in cafe_keywords for word in words):
+        return True
+        
+    # Check multi-word phrases explicitly
+    multi_word_phrases = ["iced coffee", "hot chocolate", "iced tea"]
+    if any(phrase in cleaned for phrase in multi_word_phrases):
+        return True
+        
+    return False
+
+

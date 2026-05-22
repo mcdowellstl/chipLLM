@@ -1330,6 +1330,61 @@ def get_choices_from_message(content: str) -> list[str]:
     return []
 
 
+# Status → CSS background color mapping for ticket tables
+_TICKET_STATUS_COLORS = {
+    "new":                    "rgba(255, 250, 180, 0.25)",   # light yellow
+    "pending":                "rgba(173, 216, 255, 0.25)",   # light blue
+    "in progress":            "rgba(210, 180, 255, 0.25)",   # light purple
+    "awaiting confirmation":  "rgba(180, 255, 200, 0.25)",   # light green
+    "closed":                 "rgba(255, 182, 193, 0.25)",   # light pink
+}
+_TICKET_STATUS_BORDERS = {
+    "new":                    "rgba(200, 180, 0, 0.45)",
+    "pending":                "rgba(70, 130, 200, 0.45)",
+    "in progress":            "rgba(130, 80, 200, 0.45)",
+    "awaiting confirmation":  "rgba(50, 160, 80, 0.45)",
+    "closed":                 "rgba(200, 80, 100, 0.45)",
+}
+
+
+def _colorize_ticket_tables(content: str) -> str:
+    """
+    Wraps each markdown ticket table in a colored <div> based on the Status row value.
+    Looks for tables that contain a | **Status** | ... | row and wraps the whole
+    table block (from the first | to the last |) in a styled div.
+    """
+    import re
+    # Match a markdown table block: one or more lines starting and ending with |
+    table_pattern = re.compile(
+        r'((?:[ \t]*\|[^\n]+\n)+)',
+        re.MULTILINE
+    )
+
+    def wrap_table(m: re.Match) -> str:
+        table_text = m.group(1)
+        # Look for a Status row: | **Status** | <value> |
+        status_match = re.search(
+            r'\|\s*\*{0,2}Status\*{0,2}\s*\|\s*([^|\n]+?)\s*\|',
+            table_text, re.IGNORECASE
+        )
+        if not status_match:
+            return table_text  # not a ticket table — leave as-is
+        raw_status = status_match.group(1).strip().lower()
+        bg = _TICKET_STATUS_COLORS.get(raw_status)
+        border = _TICKET_STATUS_BORDERS.get(raw_status)
+        if not bg:
+            return table_text  # unknown status — leave unstyled
+        return (
+            f'<div style="background:{bg}; border:1px solid {border}; '
+            f'border-left:4px solid {border}; border-radius:10px; '
+            f'padding:14px 16px; margin:14px 0;">\n'
+            f'{table_text.rstrip()}\n'
+            f'</div>\n'
+        )
+
+    return table_pattern.sub(wrap_table, content)
+
+
 def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
     """
     Remove parenthesized options list from assistant messages if suggestion chips will be displayed,
@@ -1344,6 +1399,9 @@ def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
     # Skip processing for the case details summary block
     if "Case Details Collected So Far" in content:
         return content
+
+    # Colorize ticket markdown tables by status (must run before any further manipulation)
+    content = _colorize_ticket_tables(content)
 
     # 1. Intercept troubleshooting salvo and put inside a colored box
     salvo_text = "There are some common troubleshooting steps that might help you fix this issue on your own. We will quickly step through them to see if this solves the issue"
@@ -1519,7 +1577,7 @@ def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
         "drawer opening", "performance acceptable", "lights on now", "orders appearing",
         "touchscreen responding", "reader working", "fixed the issue", "is paper out"
     ]):
-        suffix = "(If complicated, describe in the steps below)"
+        suffix = "(If complicated, describe in the steps below)"  # type: ignore[assignment]
     else:
         suffix = "(or type your answer below)"
         
@@ -3036,8 +3094,10 @@ if user_input:
         })
         st.rerun()
         
-    # Intercept manual ticket escalation keywords (exclude existing ticket status lookups)
-    elif ("escalate" in lower_input or "ticket" in lower_input or "open case" in lower_input) and not is_ticket_status_lookup_intent(user_input):
+    # Intercept only explicit escalate/live-chat keyword requests from outside an active troubleshoot session
+    # NOTE: Do NOT intercept ticket-related words here — that would block ticket status/action requests.
+    # The escalation buttons are triggered ONLY by the LLM via the post-response check when troubleshooting is exhausted.
+    elif ("escalate" in lower_input or "live chat" in lower_input or "live agent" in lower_input) and not is_ticket_status_lookup_intent(user_input):
         ask_case_flow_options(user_input)
         
     else:

@@ -100,7 +100,8 @@ For any tech issue reported, you MUST follow this exact sequential progression:
 
 ## Active Incident / Ticket Queries
 - You have access to a tool named `get_active_tickets` that accepts `status_filter` (values: "open", "closed", or "all") and returns a dictionary with filtered tickets and a count of closed tickets in the last 30 days: `{"tickets": list[dict], "closed_last_30_days": int}`.
-- **STRICT PROHIBITION ON HALLUCINATING TICKET STATISTICS**: You MUST NEVER invent, guess, or hardcode ticket statistics (such as counts of open or closed tickets, e.g. "no open tickets at the moment" or "2 tickets closed in the last 30 days") or ticket fields under any circumstances. You MUST always execute the `get_active_tickets` tool to fetch live statistics from the database whenever the user asks about tickets, active tickets, closed tickets, case history, or any status update related to tickets.
+- You also have access to a tool named `get_case_details` that accepts `case_id` (a ticket ID string such as `"RC001024"`) and returns a full case record dict including all fields and comments.
+- **STRICT PROHIBITION ON HALLUCINATING TICKET STATISTICS**: You MUST NEVER invent, guess, or hardcode ticket statistics (such as counts of open or closed tickets, e.g. "no open tickets at the moment" or "2 tickets closed in the last 30 days") or ticket fields under any circumstances. You MUST always execute the appropriate tool to fetch live data from the database.
 - **MANDATORY TOOL EXECUTION ON ANY TICKET CHALLENGE OR DOUBT**: If the user challenges or doubts ticket counts, states that the ticket list is empty, says they don't see anything, says "both not true", "not true", "that's wrong", "incorrect", "i dont see anything", "where are they", or asks why a ticket is not showing, you MUST IMMEDIATELY call the `get_active_tickets` tool to query the actual live database. Do NOT try to argue, apologize without checking, or reply using conversational text alone. You MUST execute the tool FIRST, and then display the results. There are NO exceptions to this rule.
 - If the user asks about tickets, active tickets, or open tickets:
   - Invoke `get_active_tickets` with `status_filter="open"`.
@@ -110,14 +111,44 @@ For any tech issue reported, you MUST follow this exact sequential progression:
     - `TICKET_ID` is the exact case/ticket ID (e.g., `RC001024`).
     - `STATUS` is the exact status (e.g. `Pending`, `In Progress`, `New`).
     - `P_PRIORITY` is the priority number formatted as `P` followed by the priority number/digit (e.g. if the priority is `"2 - High"`, render it as `P2`; if the priority is `"3 - Moderate"`, render it as `P3`).
-    - `SHORT_DESCRIPTION` is the literal `short_description` (or `summary`) of the ticket as returned in the tool response (e.g. `"Kiosk 3 Cash Acceptor Jammed"` or `"KVS Bumpbar buttons unresponsive in kitchen Zone 1"`), WITHOUT attempting to summarize, edit, calculate, or rewrite it.
-      - **CRITICAL EXCEPTION FOR STRUCTURED MULTILINE LOGS**: If the ticket's short_description/summary is a long, multiline structured text (such as containing sections like `[Device Details]`, `[Triage Diagnostics]`, `[System Action]`), do NOT output the whole multiline block. Synthesize a clean, single-line description of the specific issue under 10 words (e.g., extracting the device type/number and the symptom, such as "Kiosk 2 technical issue" or "Kiosk 2 ticket") so that the ticket fits neatly on a single line.
+    - `SHORT_DESCRIPTION` is the literal `short_description` (or `summary`) of the ticket as returned in the tool response, WITHOUT attempting to summarize, edit, calculate, or rewrite it.
+      - **CRITICAL EXCEPTION FOR STRUCTURED MULTILINE LOGS**: If the ticket's short_description/summary is a long, multiline structured text (such as containing sections like `[Device Details]`, `[Triage Diagnostics]`, `[System Action]`), do NOT output the whole multiline block. Synthesize a clean, single-line description of the specific issue under 10 words so that the ticket fits neatly on a single line.
   - Follow the list with exactly one empty blank line (meaning a double newline character `\n\n`), and then print exactly this text: "Would you like to get more details or update any of these cases?"
   - Do NOT print action options, menus, or command lists.
+
+## Case Detail View (CRITICAL — STRICT FORMAT RULES)
+- If the user asks for more details on a specific case ID (e.g., "get more details on RC001024", "tell me more about RC001024", "see details for RC001024"), you MUST:
+  1. Call the `get_case_details` tool with the case ID as `case_id`.
+  2. Parse the returned case record completely. **NO LAZY FALLBACKS**: You have full access to all case fields including status, priority, category, subcategory, created_at, comments, and summary. Never claim you cannot access detail information. Never redirect to a live agent unless the user explicitly asks for a human.
+  3. Format and output the case details using **exactly this structural pattern** — no tables, no cards, no bounding boxes, no colored divs:
+
+```
+Ticket [ID] — [Short Description]
+Status: [Status] | Priority: P[Priority] | Opened: [Created At formatted as YYYY-MM-DD HH:MM:SS]
+Category: [Category] ([Subcategory])
+
+Recent Activity & Comments:
+• [[Timestamp]] [Author]: [Text]
+• [[Timestamp]] [Author]: [Text]
+
+What would you like to do with this case? (You can add a comment, change the status, or escalate it)
+```
+
+  - `[ID]` is the exact ticket ID.
+  - `[Short Description]` is the `summary` or `short_description` field. If it is a multiline structured log, synthesize a clean single-line title under 10 words.
+  - `[Status]` is the exact status field value.
+  - `P[Priority]` is extracted from the `priority` field — strip any leading number and label (e.g., `"2 - High"` → `P2`, `"3 - Moderate"` → `P3`).
+  - `[Created At]` is the `created_at` or `sys_created_on` field, formatted as `YYYY-MM-DD HH:MM:SS` (strip timezone info for readability).
+  - `[Category]` and `([Subcategory])` are the `category` and `subcategory` fields. If either is `None` or missing, omit that line entirely.
+  - Under `Recent Activity & Comments:`, list each comment from the `comments` field as `• [[timestamp]] [author]: [text]`. If there are no comments, write `• No comments on record.`
+  - End with exactly: `What would you like to do with this case? (You can add a comment, change the status, or escalate it)`
+  - **ABSOLUTELY NO TABLES OR CARDS**: Do NOT wrap the output in HTML tables, markdown tables, colored borders, or colored boxes.
+  - **NO BOLD CATEGORY PREFIXES**: Do NOT format lines like `* **Status:** Pending`. Use plain text inline format as shown above.
+
 - **ABSOLUTELY NO TABLES OR CARDS**: Do NOT wrap ticket data in HTML tables, markdown tables, colored borders, or colored boxes. If you generate a bounding box, you fail.
 - **BAN THE BUTTON MATRIX**: Do NOT list action options, text menus, or mock buttons (e.g., do NOT print "Case Options: See Details...", or list any options to proceed).
 - **NO HISTORICAL METRICS**: Do NOT look up or report on closed tickets (e.g. never include any note or mention about closed tickets like "There are also X amount of tickets closed..."). Only speak about the active issues on the screen.
-- Keep your tone friendly and helpful, but ensure the list is displayed exactly as described.
+- Keep your tone friendly and helpful, but ensure the list and detail views are displayed exactly as described.
 
 
 ## Smart Fallback Handling & Refusal Avoidance
@@ -256,6 +287,52 @@ def get_active_tickets(status_filter: str = "open") -> dict:
         }
 
 
+def get_case_details(case_id: str) -> dict:
+    """
+    Get the full details of a single incident case by its ID.
+
+    Args:
+        case_id (str): The exact case/ticket ID to look up (e.g., 'RC001024').
+
+    Returns:
+        dict: The full case record including id, summary, status, priority, category,
+              subcategory, created_at, and comments list. Returns an empty dict if not found.
+    """
+    import streamlit as st
+    import logging
+
+    local_logger = logging.getLogger("chipLLM.get_case_details")
+    active_store = st.session_state.get("active_store", "Unknown")
+
+    local_logger.info("=== DB CALL: get_case_details ===")
+    local_logger.info("case_id: %s, active_store: %s", case_id, active_store)
+
+    try:
+        from mocks.servicenow import get_store_tickets
+        all_tickets = []
+        if active_store and active_store != "Unknown":
+            all_tickets = get_store_tickets(active_store)
+        if not all_tickets:
+            all_tickets = st.session_state.get("active_tickets", [])
+        if all_tickets is None:
+            all_tickets = []
+
+        case_id_norm = case_id.strip().upper()
+        for t in all_tickets:
+            if not isinstance(t, dict):
+                continue
+            tid = (t.get("id") or t.get("number") or "").strip().upper()
+            if tid == case_id_norm:
+                local_logger.info("Found case %s: %s", case_id, t)
+                return t
+
+        local_logger.warning("Case %s not found in store %s tickets.", case_id, active_store)
+        return {"error": f"Case {case_id} not found."}
+    except Exception as e:
+        local_logger.exception("Unexpected error in get_case_details tool execution: %s", e)
+        return {"error": str(e)}
+
+
 # ---------------------------------------------------------------------------
 # LLM Client
 # ---------------------------------------------------------------------------
@@ -325,7 +402,7 @@ class ChipLLMClient:
             temperature=0.3,
             max_output_tokens=1024,
             top_p=0.9,
-            tools=[get_active_tickets],
+            tools=[get_active_tickets, get_case_details],
             automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
         )
 
@@ -345,17 +422,21 @@ class ChipLLMClient:
         if tool_calls:
             function_responses = []
             for tc in tool_calls:
+                args = dict(tc.args) if tc.args else {}
                 if tc.name == "get_active_tickets":
-                    args = dict(tc.args) if tc.args else {}
                     result = get_active_tickets(**args)
-                    function_responses.append(
-                        genai_types.Part(
-                            function_response=genai_types.FunctionResponse(
-                                name=tc.name,
-                                response={"result": result},
-                            )
+                elif tc.name == "get_case_details":
+                    result = get_case_details(**args)
+                else:
+                    result = {"error": f"Unknown tool: {tc.name}"}
+                function_responses.append(
+                    genai_types.Part(
+                        function_response=genai_types.FunctionResponse(
+                            name=tc.name,
+                            response={"result": result},
                         )
                     )
+                )
 
             if function_responses:
                 model_turn = genai_types.Content(

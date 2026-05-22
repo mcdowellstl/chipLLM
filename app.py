@@ -1261,11 +1261,13 @@ def get_choices_from_message(content: str) -> list[str]:
     content_lower = content.lower()
     
     # 0. Case detail view — ALWAYS suppress chips/buttons entirely.
-    # Matches both the old 'recent activity' and new 'activity:' / 'how do you want' markers.
+    # Matches all case detail view markers including the new two-line closing block.
     if ("activity:" in content_lower
             or "recent activity" in content_lower
             or "how do you want to handle this" in content_lower
-            or "what's the plan for this issue" in content_lower):
+            or "what's the plan for this issue" in content_lower
+            or "you can update status" in content_lower
+            or "what would you like to do next" in content_lower):
         return []
 
     # 0. Case options prompt bubbles - BANNED under UI Reboot
@@ -1639,21 +1641,29 @@ def _reformat_case_detail_view(content: str) -> str:
     raw_lines = [ln.strip() for ln in re.split(r'\r?\n', stripped)]
     sections = [ln for ln in raw_lines if ln]  # drop blank lines — we'll add our own
 
-    # Bucket each line into its role so we can rebuild cleanly
+    # Canonical closing block — always appended; any LLM-generated closing line is dropped
     result_parts = []
     _CLOSING_LINES = {
         "how do you want to handle this",
         "what's the plan for this issue",
         "what would you like to do with this case",
+        "what would you like to do next",
+        "you can update status, escalate, or add a comment to this case",
     }
+    _CANONICAL_CLOSING = (
+        "You can update status, escalate, or add a comment to this case.\n"
+        "What would you like to do next?"
+    )
 
     for line in sections:
         # Strip trailing punctuation and spaces before comparing
         line_bare = re.sub(r'[?.!,\s]+$', '', line.lower())
-        if line_bare in _CLOSING_LINES:
-            result_parts.append("How do you want to handle this?")
-        else:
+        if line_bare not in _CLOSING_LINES:
             result_parts.append(line)
+
+    # Always append canonical closing as a single block (\n between the two lines,
+    # \n\n will be added by the join below to separate it from the last comment)
+    result_parts.append(_CANONICAL_CLOSING)
 
     # Join with exactly \n\n between every element
     return "\n\n".join(result_parts)

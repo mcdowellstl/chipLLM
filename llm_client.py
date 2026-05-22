@@ -124,7 +124,7 @@ For any tech issue reported, you MUST follow this exact sequential progression:
 
 EXACT REQUIRED OUTPUT (use \n\n between every line, no exceptions):
 
-Ticket [ID] — [Short Description]\n\nStatus: [Status] | Priority: P[Priority] | Opened: [Created At]\n\nCategory: [Category] ([Subcategory])\n\nActivity:\n\n• [[Timestamp]] [Author]: [Text]\n\n• [[Timestamp]] [Author]: [Text]\n\nHow do you want to handle this?
+Ticket [ID] — [Short Description]\n\nStatus: [Status] | Priority: P[Priority] | Opened: [Created At]\n\nCategory: [Category] ([Subcategory])\n\nActivity:\n\n• [[Timestamp]] [Author]: [Text]\n\n• [[Timestamp]] [Author]: [Text]\n\nYou can update status, escalate, or add a comment to this case.\nWhat would you like to do next?
 
 FIELD RULES:
   - `[ID]`: exact ticket ID.
@@ -134,7 +134,10 @@ FIELD RULES:
   - `[Created At]`: the `created_at` or `sys_created_on` field formatted as `YYYY-MM-DD HH:MM:SS`, stripping timezone offset.
   - `[Category] ([Subcategory])`: the `category` and `subcategory` fields. Omit this line entirely if both are null or missing.
   - Under `Activity:`, list EACH comment on its OWN line separated by \n\n as `• [[timestamp]] [author]: [text]`. NEVER run multiple comments together on one line. If no comments, write `• No comments on record.`
-  - The FINAL LINE must be exactly: `How do you want to handle this?` — NO parenthetical, NO options list after it. The UI auto-generates buttons from parenthetical text; do NOT add one.
+  - The FINAL TWO LINES must be exactly:
+    `You can update status, escalate, or add a comment to this case.`
+    `What would you like to do next?`
+    NO parenthetical, NO options list. The UI auto-generates buttons from parenthetical text; do NOT add one.
 
 CRITICAL LAYOUT RULES:
   - **DOUBLE NEWLINES EVERYWHERE**: Put \n\n between the title line, the status line, the category line, the Activity: header, every bullet comment, and the closing question. No exceptions.

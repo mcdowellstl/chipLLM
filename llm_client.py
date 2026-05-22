@@ -96,10 +96,33 @@ For any tech issue reported, you MUST follow this exact sequential progression:
    - Once escalation is triggered, explain that you are staging the session context for transfer.
 
 ## Active Incident / Ticket Queries
-- You have access to a tool named `get_active_tickets` that returns a list of active support tickets/incidents for the current store (sourced from `st.session_state.active_tickets`).
-- Each ticket object is a dictionary that includes an `id` (e.g., "RC001024"), `summary` (e.g., "Kiosk 3 Cash Acceptor Jammed"), `status` (e.g., "Assigned to Field Tech"), and `comments` (a list of historical comments, each with `timestamp`, `author`, and `text`).
-- If the user asks about existing, active, open, or current tickets/incidents, status checks, or recent store issues (e.g., "are there any open tickets?", "what's the status of my tickets?", "any recent issues?"), you MUST invoke `get_active_tickets` to fetch them.
-- Once fetched, parse and print a clean, friendly, direct summary directly inside your conversational chat bubble, listing their ID, summary, status, and summarizing or listing their past comment history.
+- You have access to a tool named `get_active_tickets` that accepts `status_filter` (values: "open", "closed", or "all") and returns a dictionary with filtered tickets and a count of closed tickets in the last 30 days: `{"tickets": list[dict], "closed_last_30_days": int}`.
+- If the user asks about tickets in general (e.g., "show tickets", "list tickets", "are there any tickets?"):
+  - Invoke `get_active_tickets` with `status_filter="open"`.
+  - Format each returned ticket as a separate, clean, 2-column markdown table (Field vs. Value).
+  - Include a note at the very bottom of your response: "There are also X amount of tickets that were closed in the last 30 days" (where X is the exact value of `closed_last_30_days` returned).
+- If the user specifically asks to see "open tickets" (e.g., "show open tickets", "list open tickets"):
+  - Invoke `get_active_tickets` with `status_filter="open"`.
+  - Format each returned ticket as a separate, clean, 2-column markdown table.
+  - Do NOT include any note about closed tickets at the bottom.
+- If the user specifically asks to see "closed tickets" (e.g., "show closed tickets", "list closed tickets"):
+  - Invoke `get_active_tickets` with `status_filter="closed"`.
+  - Format each returned ticket as a separate, clean, 2-column markdown table.
+  - Do NOT include any note about closed tickets at the bottom.
+
+## Ticket Markdown Table Format Guidelines (STRICT)
+- Each ticket MUST be represented as its own separate markdown table with exactly two columns: `| Field | Value |`.
+- Do NOT combine multiple tickets into a single table. Leave an empty line space between successive tables for excellent layout and appearance.
+- For each ticket, include these rows in the table:
+  - `| **Ticket ID** | [id] |`
+  - `| **Summary** | [summary] |`
+  - `| **Status** | [status] |`
+  - `| **Category** | [category] |`
+  - `| **Subcategory** | [subcategory] |`
+  - `| **Created At** | [created_at or sys_created_on] |`
+  - `| **Comments** | [comments formatted as bullet points] |`
+- The `Comments` row value MUST be a single line containing all comments formatted as a bulleted list separated by `<br>` tags to prevent breaking the markdown table row structure. Each bullet point should follow this format: `• **[author]** ([timestamp]): [text]`. If there are no comments, show "No comments".
+- Keep your tone friendly and helpful, but ensure the tables are displayed exactly as described.
 
 ## Smart Fallback Handling & Refusal Avoidance
 - If a user describes an issue that is ambiguous, unclear, or hard to diagnose, DO NOT refuse to answer, and DO NOT give a generic rejection. Instead, ask a smart, conversational clarifying question about the device, symptom, or error code to help narrow it down (e.g., "Hi there! That sounds tricky. Which device is showing that error, and do you see an error code on the screen?").
@@ -124,15 +147,82 @@ For any tech issue reported, you MUST follow this exact sequential progression:
 # Tools / Function Calling Declarations
 # ---------------------------------------------------------------------------
 
-def get_active_tickets() -> list[dict]:
+def get_active_tickets(status_filter: str = "open") -> dict:
     """
-    Get the list of active incident tickets for the currently selected store.
+    Get the list of incident tickets for the currently selected store, filtered by status.
+
+    Args:
+        status_filter (str): Filter by ticket status. Can be 'open' (non-closed tickets),
+                            'closed' (only closed tickets), or 'all' (all tickets). Defaults to 'open'.
 
     Returns:
-        list[dict]: A list of active tickets, where each ticket is a dictionary containing number, short_description, priority, state, and sys_created_on.
+        dict: A dictionary containing:
+            - 'tickets' (list[dict]): A list of filtered tickets.
+            - 'closed_last_30_days' (int): The count of tickets closed in the last 30 days.
     """
     import streamlit as st
-    return st.session_state.get("active_tickets", [])
+    from datetime import datetime, timezone, timedelta
+
+    all_tickets = st.session_state.get("active_tickets", [])
+    
+    def parse_date(date_val) -> datetime | None:
+        if not date_val:
+            return None
+        if isinstance(date_val, datetime):
+            dt = date_val
+        elif isinstance(date_val, str):
+            date_str = date_val.strip()
+            try:
+                if date_str.endswith("Z"):
+                    dt = datetime.fromisoformat(date_str[:-1]).replace(tzinfo=timezone.utc)
+                else:
+                    dt = datetime.fromisoformat(date_str)
+            except Exception:
+                try:
+                    dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    try:
+                        dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
+                    except Exception:
+                        return None
+        else:
+            return None
+
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt
+
+    now = datetime.now(timezone.utc)
+    thirty_days_ago = now - timedelta(days=30)
+    
+    closed_last_30_days = 0
+    filtered_tickets = []
+    
+    for t in all_tickets:
+        status = t.get("status") or t.get("state") or ""
+        is_closed = isinstance(status, str) and status.strip().lower() == "closed"
+        
+        # Calculate closed in last 30 days
+        if is_closed:
+            created_val = t.get("created_at") or t.get("sys_created_on")
+            dt = parse_date(created_val)
+            if dt and dt >= thirty_days_ago:
+                closed_last_30_days += 1
+                
+        # Filter tickets
+        if status_filter == "closed" and is_closed:
+            filtered_tickets.append(t)
+        elif status_filter == "open" and not is_closed:
+            filtered_tickets.append(t)
+        elif status_filter == "all":
+            filtered_tickets.append(t)
+            
+    return {
+        "tickets": filtered_tickets,
+        "closed_last_30_days": closed_last_30_days
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +314,8 @@ class ChipLLMClient:
             function_responses = []
             for tc in tool_calls:
                 if tc.name == "get_active_tickets":
-                    result = get_active_tickets()
+                    args = dict(tc.args) if tc.args else {}
+                    result = get_active_tickets(**args)
                     function_responses.append(
                         genai_types.Part(
                             function_response=genai_types.FunctionResponse(

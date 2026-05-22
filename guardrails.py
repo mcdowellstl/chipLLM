@@ -237,6 +237,16 @@ def is_ticket_status_lookup_intent(text: str) -> bool:
         return False
     lower_text = text.strip().lower()
 
+    # 0a. Explicit ticket creation phrases must NOT be treated as lookups/mutations
+    creation_phrases = [
+        "open a support ticket", "open support ticket", "open a ticket", "open ticket",
+        "create a support ticket", "create support ticket", "create a ticket", "create ticket",
+        "submit a support ticket", "submit support ticket", "submit a ticket", "submit ticket",
+        "raise a support ticket", "raise support ticket", "raise a ticket", "raise ticket",
+    ]
+    if any(phrase in lower_text for phrase in creation_phrases):
+        return False
+
     # 0. Case mutation intents — treat exactly like a lookup to bypass triage routing
     mutation_phrases = [
         "add comment", "add a comment", "add note", "add a note",

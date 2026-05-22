@@ -623,6 +623,22 @@ def file_to_base64_data_url(uploaded_file) -> str | None:
 # Automatic Triage Synchronization
 # ---------------------------------------------------------------------------
 
+def get_current_flow_messages() -> list:
+    """
+    Returns messages in st.session_state.messages starting AFTER the last
+    ServiceNow Ticket Generated Successfully marker message, to isolate the current triage flow.
+    """
+    messages = st.session_state.get("messages", [])
+    if not messages:
+        return []
+    last_idx = -1
+    for idx, msg in enumerate(messages):
+        if msg.get("role") == "assistant" and "ServiceNow Ticket Generated Successfully!" in msg.get("content", ""):
+            last_idx = idx
+    if last_idx != -1:
+        return messages[last_idx + 1:]
+    return messages
+
 def sync_triage_from_messages() -> None:
     """
     Parses conversation history on every rerun to sync conversational triage fields
@@ -632,7 +648,7 @@ def sync_triage_from_messages() -> None:
     if "current_triage" not in st.session_state:
         st.session_state.current_triage = {}
         
-    messages = st.session_state.get("messages", [])
+    messages = get_current_flow_messages()
     if not messages:
         return
 
@@ -697,11 +713,12 @@ def sync_triage_from_messages() -> None:
                 summary_dict["Is there visible paper"] = ans_clean.capitalize()
                 
             # 5. Internal Jam Roller C
-            elif any(kw in q_content for kw in ["internal jam roller", "roller c", "roller"]):
+            elif (any(re.search(rf"\b{re.escape(kw)}\b", q_content) for kw in ["internal jam roller", "roller c"]) or
+                  (re.search(r"\broller\b", q_content) and ("printer" in q_content or "paper" in q_content or "jam" in q_content or "printer" in st.session_state.get("ai_issue_description", "").lower() or any("printer" in m["content"].lower() for m in messages if m["role"] == "user")))):
                 summary_dict["Internal Jam Roller C"] = f"{ans_clean.capitalize()} — not resolved" if ans_clean.lower() == "no" else ans_clean
                 
             # 7. Are you OTP
-            elif "otp" in q_content:
+            elif re.search(r"\botp\b", q_content):
                 summary_dict["Are you OTP or OTP cer"] = ans_clean.capitalize()
 
     # Seed the "Issue Description" with the raw first user message if not already captured from Q&A
@@ -758,7 +775,14 @@ def sync_triage_from_messages() -> None:
     for k, v in summary_dict.items():
         current_val = st.session_state.current_triage.get(k)
         # Only write if key is missing or currently set to a default fallback
-        if current_val is None or current_val in ["Unknown", "Skipped device info"]:
+        is_fallback = current_val is None or current_val in ["Unknown", "Skipped device info"]
+        if k == "Issue Description" and current_val is not None:
+            # If the current value is a bare generic word, and the new value is a richer symptom, allow overwrite!
+            is_current_bare = current_val.lower().strip() in {"printer", "pos", "kiosk", "kvs", "kds", "bos", "hardware", "software", "device", "unknown", ""}
+            is_new_rich = v.lower().strip() not in {"printer", "pos", "kiosk", "kvs", "kds", "bos", "hardware", "software", "device", "unknown", ""}
+            if is_current_bare and is_new_rich:
+                is_fallback = True
+        if is_fallback:
             st.session_state.current_triage[k] = v
 
 sync_triage_from_messages()
@@ -766,7 +790,7 @@ sync_triage_from_messages()
 def _is_printer_issue() -> bool:
     """Return True if the current session is about a printer."""
     all_text = " ".join(
-        m["content"] for m in st.session_state.get("messages", [])
+        m["content"] for m in get_current_flow_messages()
     ).lower()
     return "printer" in all_text or "print" in all_text
 
@@ -882,6 +906,7 @@ def render_priority_form() -> None:
 def start_escalation_triage(append_welcome: bool = True):
     logger.info("Starting escalation triage flow. active_store: %s", st.session_state.active_store)
     st.session_state.escalation_triage_active = True
+    st.session_state.ticket_collection_active = False
     st.session_state.triage_model = None
     st.session_state.triage_serial = None
     st.session_state.triage_q1 = None
@@ -958,6 +983,45 @@ def check_escalation_intent(user_input: str) -> bool:
 
 
 # (is_ticket_status_lookup_intent is now imported from guardrails)
+
+
+def parse_status_change_intent(text: str) -> tuple[bool, str | None]:
+    """
+    Parses conversational user intent to change/update a case/ticket status.
+    Returns (is_status_change_intent, ticket_id)
+    """
+    import re
+    if not text:
+        return False, None
+    lower_text = text.strip().lower()
+    
+    # 1. Keywords list for status update intent
+    keywords = ["status", "close", "closed", "pending", "awaiting confirmation", "awaiting"]
+    verbs = ["change", "update", "modify", "set", "transition", "switch", "patch", "close"]
+    
+    # Simple check: does user mention status change or closing?
+    is_intent = any(v in lower_text for v in verbs) and any(k in lower_text for k in keywords)
+    
+    # Or does it match phrases like "change status", "update status", "modify status", "set status", 
+    # "close case", "close ticket", "close the case", "close the ticket", "update case status", "update ticket status"
+    direct_phrases = [
+        "change status", "update status", "modify status", "set status", 
+        "close case", "close ticket", "close the case", "close the ticket",
+        "update case status", "update ticket status", "change case status"
+    ]
+    if any(phrase in lower_text for phrase in direct_phrases):
+        is_intent = True
+        
+    # Also if the user says exactly "modify status", "change status", "update status", "close", "close ticket", "close case"
+    if lower_text in ["modify status", "change status", "update status", "close", "close ticket", "close case"]:
+        is_intent = True
+
+    # 2. Extract ticket/case ID if present
+    ticket_id_match = re.search(r"\b((?:INC|RC)[-_]?\d+)\b", text.upper())
+    ticket_id = ticket_id_match.group(1) if ticket_id_match else None
+    
+    return is_intent, ticket_id
+
 
 
 def parse_comment_update_intent(text: str) -> tuple[str, str] | None:
@@ -1176,7 +1240,8 @@ def get_diagnostic_summary() -> list[tuple[str, str]]:
                 summary_dict["Is there visible paper"] = ans_clean.capitalize()
                 
             # 5. Internal Jam Roller C  (troubleshooting step)
-            elif any(kw in q_content for kw in ["internal jam roller", "roller c", "roller"]):
+            elif (any(re.search(rf"\b{re.escape(kw)}\b", q_content) for kw in ["internal jam roller", "roller c"]) or
+                  (re.search(r"\broller\b", q_content) and ("printer" in q_content or "paper" in q_content or "jam" in q_content or "printer" in st.session_state.get("ai_issue_description", "").lower() or any("printer" in m["content"].lower() for m in messages if m["role"] == "user")))):
                 summary_dict["Internal Jam Roller C"] = f"{ans_clean.capitalize()} — not resolved" if ans_clean.lower() == "no" else ans_clean
                 
             # 6. Device Information
@@ -1184,7 +1249,7 @@ def get_diagnostic_summary() -> list[tuple[str, str]]:
                 summary_dict["Device Information"] = ans_clean
                 
             # 7. Are you OTP  (troubleshooting step)
-            elif "otp" in q_content:
+            elif re.search(r"\botp\b", q_content):
                 summary_dict["Are you OTP or OTP cer"] = ans_clean.capitalize()
 
     # Seed the "What is the issue" with the AI-generated description
@@ -2288,7 +2353,7 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
         if ai_desc and ai_desc != "Unknown":
             first_user_msg = ai_desc
         else:
-            for m in st.session_state.get("messages", []):
+            for m in get_current_flow_messages():
                 if m["role"] == "user":
                     first_user_msg = m["content"].replace("**", "").replace("`", "").strip()
                     break
@@ -2303,14 +2368,19 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
 
             # Always include the user's own words at the top of the description
             first_user_msg_raw = ""
-            for m in st.session_state.get("messages", []):
+            for m in get_current_flow_messages():
                 if m["role"] == "user":
                     first_user_msg_raw = m["content"].replace("**", "").replace("`", "").strip()
                     break
             if first_user_msg_raw:
-                diagnostic_dump_lines.append("[User Report]")
-                diagnostic_dump_lines.append(f"- Initial message: {first_user_msg_raw}")
-                diagnostic_dump_lines.append("")
+                is_bare_word = (
+                    first_user_msg_raw.lower().strip() in {"printer", "pos", "kiosk", "kvs", "kds", "bos", "hardware", "software", "device", "unknown"}
+                    or len(first_user_msg_raw.split()) <= 2
+                )
+                if not is_bare_word:
+                    diagnostic_dump_lines.append("[User Report]")
+                    diagnostic_dump_lines.append(f"- Initial message: {first_user_msg_raw}")
+                    diagnostic_dump_lines.append("")
 
             diagnostic_dump_lines.append("[Device Details]")
             diagnostic_dump_lines.append(f"- Store ID: {active_store}")
@@ -2362,7 +2432,7 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                     
             # Then add any assistant-driven step summaries from chat messages
             step_index = ts_dump_count + 1
-            for msg in st.session_state.messages:
+            for msg in get_current_flow_messages():
                 if msg["role"] == "assistant":
                     content = msg["content"]
                     content_lower = content.lower()
@@ -2441,31 +2511,13 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
     troubleshooting_keys = [
         "Is there visible paper", "Internal Jam Roller C", "Are you OTP or OTP cer"
     ]
-
-    st.markdown("<div class='diagnostic-card'>", unsafe_allow_html=True)
     
-    # Section 1: Triage Diagnostics
-    st.markdown(f"<div class='diagnostic-header'>Triage Diagnostics</div>", unsafe_allow_html=True)
-    for k in triage_keys:
-        v = st.session_state.current_triage.get(k)
-        if v is not None and str(v).strip():
-            st.markdown(
-                f"<div class='diagnostic-row'>"
-                f"  <div class='diagnostic-key'>{k}</div>"
-                f"  <div class='diagnostic-val'>{v}</div>"
-                f"</div>",
-                unsafe_allow_html=True
-            )
-            
-    # Section 2: Troubleshooting Steps Attempted
-    has_troubleshooting = any(k in st.session_state.current_triage for k in troubleshooting_keys)
-    if has_troubleshooting:
-        st.markdown(
-            f"<div class='diagnostic-header' style='margin-top:16px; padding-top:12px; "
-            f"border-top: 1px solid rgba(255,255,255,0.08);'>Troubleshooting Steps Attempted</div>",
-            unsafe_allow_html=True
-        )
-        for k in troubleshooting_keys:
+    if not manual_flow:
+        st.markdown("<div class='diagnostic-card'>", unsafe_allow_html=True)
+        
+        # Section 1: Triage Diagnostics
+        st.markdown(f"<div class='diagnostic-header'>Triage Diagnostics</div>", unsafe_allow_html=True)
+        for k in triage_keys:
             v = st.session_state.current_triage.get(k)
             if v is not None and str(v).strip():
                 st.markdown(
@@ -2475,7 +2527,8 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                     f"</div>",
                     unsafe_allow_html=True
                 )
-    st.markdown("</div>", unsafe_allow_html=True)
+                
+        st.markdown("</div>", unsafe_allow_html=True)
     
     # Buttons with dynamic style markers
     st.markdown("<div class='submit-btn-marker'></div>", unsafe_allow_html=True)
@@ -2493,7 +2546,7 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             inc_num = f"RC00{random.randint(1000, 9999)}"
             
             # Determine category and sub-category dynamically
-            all_chat_text = " ".join([m["content"] for m in st.session_state.messages]).lower()
+            all_chat_text = " ".join([m["content"] for m in get_current_flow_messages()]).lower()
             summary_text = " ".join([f"{k} {v}" for k, v in st.session_state.current_triage.items()]).lower()
             combined_text = all_chat_text + " " + summary_text
             
@@ -2517,7 +2570,7 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             # Parse serial number if present in triage
             serial_val = st.session_state.current_triage.get("Serial Number", "—")
             if serial_val in ["—", "Unknown"]:
-                for msg in st.session_state.messages:
+                for msg in get_current_flow_messages():
                     content = msg["content"]
                     match = re.search(r"\b([A-Z0-9]{2,6}[-]?[\d]{5,12})\b", content)
                     if match:
@@ -2529,14 +2582,19 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
 
             # Always include the user's own words at the top of the description
             first_user_msg_raw = ""
-            for m in st.session_state.get("messages", []):
+            for m in get_current_flow_messages():
                 if m["role"] == "user":
                     first_user_msg_raw = m["content"].replace("**", "").replace("`", "").strip()
                     break
             if first_user_msg_raw:
-                diagnostic_dump_lines.append("[User Report]")
-                diagnostic_dump_lines.append(f"- Initial message: {first_user_msg_raw}")
-                diagnostic_dump_lines.append("")
+                is_bare_word = (
+                    first_user_msg_raw.lower().strip() in {"printer", "pos", "kiosk", "kvs", "kds", "bos", "hardware", "software", "device", "unknown"}
+                    or len(first_user_msg_raw.split()) <= 2
+                )
+                if not is_bare_word:
+                    diagnostic_dump_lines.append("[User Report]")
+                    diagnostic_dump_lines.append(f"- Initial message: {first_user_msg_raw}")
+                    diagnostic_dump_lines.append("")
 
             diagnostic_dump_lines.append("[Device Details]")
             diagnostic_dump_lines.append(f"- Store ID: {active_store}")
@@ -2580,7 +2638,7 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                     
             # Then add any assistant-driven step summaries from chat messages
             step_index = ts_dump_count + 1
-            for msg in st.session_state.messages:
+            for msg in get_current_flow_messages():
                 if msg["role"] == "assistant":
                     content = msg["content"]
                     content_lower = content.lower()
@@ -2622,26 +2680,38 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                 full_description_dump = "\n".join(diagnostic_dump_lines)
 
                 # Build Short Description deterministically from structured triage data
-                # (LLM call collapses to bare device name — use the data we already have)
                 _dev_type = st.session_state.current_triage.get("Device Type", "")
                 _asset_num = st.session_state.current_triage.get("Asset Number", "")
                 _issue_desc = st.session_state.current_triage.get("Issue Description", "")
 
                 # Prefer first user message as the issue description if triage captured only the device name
-                _bare_device_words = {"pos", "kiosk", "kvs", "kds", "bos", "printer", "unknown", ""}
+                _bare_device_words = {"pos", "kiosk", "kvs", "kds", "bos", "printer", "unknown", "hardware", "software", "device", ""}
                 if not _issue_desc or _issue_desc.lower().strip() in _bare_device_words:
-                    for _m in st.session_state.messages:
+                    for _m in get_current_flow_messages():
                         if _m["role"] == "user":
                             _issue_desc = _m["content"].replace("**", "").replace("`", "").strip()
                             break
 
-                # Compose: "POS1 — garbled text and loud noise" or fall back to device+sub
+                # Resolve device base identifier
                 if _asset_num and _asset_num not in ("Unknown", ""):
-                    short_desc = f"{_asset_num} — {_issue_desc}"
+                    dev_id = _asset_num
                 elif _dev_type and _dev_type not in ("Unknown", ""):
-                    short_desc = f"{_dev_type} — {_issue_desc}"
+                    dev_id = _dev_type
                 else:
-                    short_desc = _issue_desc or f"{sub_category.capitalize()} issue"
+                    dev_id = sub_category.capitalize()
+
+                # Ensure the sub_category (e.g. Printer) is part of the identifier
+                sub_cap = sub_category.capitalize()
+                if sub_cap.lower() not in dev_id.lower():
+                    dev_identifier = f"{dev_id} {sub_cap}"
+                else:
+                    dev_identifier = dev_id
+
+                # Enrich symptom formatting
+                if _issue_desc and _issue_desc.lower().strip() not in _bare_device_words:
+                    short_desc = f"{dev_identifier} - {_issue_desc}"
+                else:
+                    short_desc = f"{dev_identifier} Issue"
 
                 if len(short_desc) > 80:
                     short_desc = short_desc[:77] + "..."
@@ -2991,6 +3061,13 @@ if st.session_state.get("active_mims"):
                 st.success("Linked to master incident.")
 
 # ---------------------------------------------------------------------------
+# Status Update Success Alert
+# ---------------------------------------------------------------------------
+if st.session_state.get("status_update_success"):
+    st.success(st.session_state.status_update_success, icon="✅")
+    del st.session_state.status_update_success
+
+# ---------------------------------------------------------------------------
 # Welcome message (injected once)
 # ---------------------------------------------------------------------------
 
@@ -3218,15 +3295,6 @@ if st.session_state.get("show_restart_chat_btn", False) and not st.session_state
         st.rerun()
 
 # ---------------------------------------------------------------------------
-# Ticket Form Render Gate
-# ---------------------------------------------------------------------------
-
-if st.session_state.ticket_collection_active:
-    is_live_agent = st.session_state.get("ticket_collection_is_agent", False)
-    with st.chat_message("assistant", avatar="👨‍💻"):
-        render_ticket_collection_form(is_live_agent=is_live_agent)
-
-# ---------------------------------------------------------------------------
 # Device Detail & Priority Forms (escalation triage flow)
 # ---------------------------------------------------------------------------
 
@@ -3239,6 +3307,15 @@ if _triage_active:
             render_priority_form()
         elif _triage_step == "device_form":
             render_device_detail_form()
+
+# ---------------------------------------------------------------------------
+# Ticket Form Render Gate
+# ---------------------------------------------------------------------------
+
+elif st.session_state.ticket_collection_active:
+    is_live_agent = st.session_state.get("ticket_collection_is_agent", False)
+    with st.chat_message("assistant", avatar="👨‍💻"):
+        render_ticket_collection_form(is_live_agent=is_live_agent)
 
 # ---------------------------------------------------------------------------
 # Suggestion Chips Rendering Block
@@ -3255,20 +3332,58 @@ _show_chips = (
 if _show_chips:
     last_msg = st.session_state.messages[-1] if st.session_state.messages else None
     if last_msg and last_msg["role"] == "assistant":
-        choices = get_choices_from_message(last_msg["content"])
-        if choices:
+        status_flow = last_msg.get("status_change_flow")
+        if status_flow:
+            case_id = status_flow["case_id"]
+            current_status = status_flow["current_status"]
+            
+            # Strict vocab states
+            all_statuses = ["Pending", "Awaiting Confirmation", "Closed"]
+            remaining_statuses = [s for s in all_statuses if s.lower() != current_status.lower()]
+            
             st.markdown("<div class='chips-sentinel'></div>", unsafe_allow_html=True)
-            # Make sure we use proper flex columns so they sit on a single line
-            cols = st.columns(len(choices))
-            for idx, (col, choice) in enumerate(zip(cols, choices)):
-                with col:
-                    if st.button(choice, key=f"chip_{choice}_{idx}", use_container_width=True):
-                        if choice in ["See Details", "Add Comment", "Modify Status", "Escalate", "None"]:
-                            # Don't do anything for now
-                            pass
-                        else:
-                            st.session_state.suggestion_click = choice
-                            st.rerun()
+            cols = st.columns(len(remaining_statuses))
+            for idx, status_opt in enumerate(remaining_statuses):
+                with cols[idx]:
+                    if st.button(status_opt, key=f"status_btn_{case_id}_{status_opt}_{idx}", use_container_width=True):
+                        # Zero-Friction Click Processing
+                        from llm_client import update_case_status
+                        update_msg = update_case_status(case_id, status_opt)
+                        
+                        ts_now = time.strftime("%H:%M")
+                        st.session_state.messages.append({
+                            "role": "user",
+                            "content": f"Update status to {status_opt}",
+                            "timestamp": ts_now,
+                            "blocked": False
+                        })
+                        
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": f"Done — case **{case_id}** status has been updated to **{status_opt}**.",
+                            "timestamp": ts_now,
+                            "blocked": False
+                        })
+                        
+                        st.session_state.status_update_success = f"Case {case_id} status updated to {status_opt}!"
+                        st.rerun()
+        else:
+            choices = get_choices_from_message(last_msg["content"])
+            if choices:
+                st.markdown("<div class='chips-sentinel'></div>", unsafe_allow_html=True)
+                cols = st.columns(len(choices))
+                for idx, (col, choice) in enumerate(zip(cols, choices)):
+                    with col:
+                        if st.button(choice, key=f"chip_{choice}_{idx}", use_container_width=True):
+                            if choice == "Modify Status":
+                                st.session_state.suggestion_click = choice
+                                st.rerun()
+                            elif choice in ["See Details", "Add Comment", "Escalate", "None"]:
+                                # Don't do anything for now
+                                pass
+                            else:
+                                st.session_state.suggestion_click = choice
+                                st.rerun()
 
 # ---------------------------------------------------------------------------
 # Chat input
@@ -3312,6 +3427,89 @@ if user_input:
     if check_escalation_intent(user_input) and not is_ticket_status_lookup_intent(user_input):
         trigger_live_agent_flow(user_input)
     
+    # Check if we were awaiting a case ID for a status change
+    last_assistant_msg = None
+    if st.session_state.messages:
+        for msg in reversed(st.session_state.messages):
+            if msg.get("role") == "assistant":
+                last_assistant_msg = msg
+                break
+                
+    if last_assistant_msg and last_assistant_msg.get("awaiting_case_id_for_status_change"):
+        import re
+        case_id_match = re.search(r"\b((?:INC|RC)[-_]?\d+)\b", user_input.upper())
+        if case_id_match:
+            resolved_case_id = case_id_match.group(1)
+            last_assistant_msg["awaiting_case_id_for_status_change"] = False
+            
+            # Append user's message
+            st.session_state.messages.append({
+                "role": "user",
+                "content": user_input,
+                "timestamp": ts_now,
+                "blocked": False
+            })
+            
+            # Resolve current status
+            from llm_client import get_case_status
+            status_res = get_case_status(resolved_case_id)
+            current_status = status_res.get("status", "Pending")
+            
+            summary_content = f"Case **{resolved_case_id}** is currently set to **{current_status}**. Please select the updated state below:"
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": summary_content,
+                "timestamp": ts_now,
+                "blocked": False,
+                "status_change_flow": {
+                    "case_id": resolved_case_id,
+                    "current_status": current_status
+                }
+            })
+            st.session_state.active_case_id = resolved_case_id
+            st.rerun()
+
+    # Intercept status change updates
+    is_status_intent, status_ticket_id = parse_status_change_intent(user_input)
+    if is_status_intent:
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_input,
+            "timestamp": ts_now,
+            "blocked": False
+        })
+        
+        resolved_case_id = status_ticket_id
+        if not resolved_case_id:
+            resolved_case_id = st.session_state.get("active_case_id")
+            
+        if resolved_case_id:
+            from llm_client import get_case_status
+            status_res = get_case_status(resolved_case_id)
+            current_status = status_res.get("status", "Pending")
+            
+            summary_content = f"Case **{resolved_case_id}** is currently set to **{current_status}**. Please select the updated state below:"
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": summary_content,
+                "timestamp": ts_now,
+                "blocked": False,
+                "status_change_flow": {
+                    "case_id": resolved_case_id,
+                    "current_status": current_status
+                }
+            })
+            st.session_state.active_case_id = resolved_case_id
+        else:
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": "Which case would you like to update?",
+                "timestamp": ts_now,
+                "blocked": False,
+                "awaiting_case_id_for_status_change": True
+            })
+        st.rerun()
+
     # Intercept comment updates
     comment_match = parse_comment_update_intent(user_input)
     if comment_match:
@@ -3424,8 +3622,7 @@ if user_input:
             "blocked": False
         })
         st.session_state.manual_ticket_flow = True
-        st.session_state.ticket_collection_active = True
-        st.session_state.ticket_collection_is_agent = False
+        start_escalation_triage(append_welcome=False)
         st.rerun()
         
     elif lower_input in ["live chat with an agent", "live chat", "chat with an agent"]:
@@ -3620,7 +3817,6 @@ if user_input:
         # If they are connected and chat turns >= 2, trigger ticket creation flow
         if is_connected_stage and st.session_state.get("live_agent_chat_turns", 0) >= 2:
             st.session_state.manual_ticket_flow = True
-            st.session_state.ticket_collection_active = True
-            st.session_state.ticket_collection_is_agent = False
+            start_escalation_triage(append_welcome=False)
 
         st.rerun()

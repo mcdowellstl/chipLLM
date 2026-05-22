@@ -443,6 +443,99 @@ def escalate_case(case_id: str) -> str:
         return f"An error occurred while escalating the case: {e}"
 
 
+def get_case_status(case_id: str) -> dict:
+    """
+    Query the status of an incident support case by its ID.
+
+    Args:
+        case_id (str): The unique case/ticket identifier (e.g. 'RC001024').
+
+    Returns:
+        dict: A dictionary holding the case ID and its status string.
+    """
+    import streamlit as st
+    import logging
+    from mocks.servicenow import supabase, MOCK_DATABASE
+
+    local_logger = logging.getLogger("chipLLM.get_case_status")
+    local_logger.info("=== TOOL CALL: get_case_status ===")
+    local_logger.info("case_id: %s", case_id)
+
+    case_id_norm = case_id.strip().upper()
+    status_str = "Pending"
+
+    if supabase:
+        try:
+            local_logger.info("Querying Supabase cases table for id: %s", case_id_norm)
+            response = supabase.table("cases").select("status, state").eq("id", case_id_norm).execute()
+            if response.data:
+                record = response.data[0]
+                status_str = record.get("status") or record.get("state") or "Pending"
+                local_logger.info("Supabase get_case_status success. Status: %s", status_str)
+                return {"case_id": case_id_norm, "status": status_str}
+        except Exception as e:
+            local_logger.exception("Supabase get_case_status failed: %s", e)
+
+    # Mock fallback
+    local_logger.info("Using mock fallback for get_case_status.")
+    for store_cases in MOCK_DATABASE.values():
+        for case in store_cases:
+            if case.get("id", "").strip().upper() == case_id_norm:
+                status_str = case.get("status") or case.get("state") or "Pending"
+                local_logger.info("Mock get_case_status success. Status: %s", status_str)
+                return {"case_id": case_id_norm, "status": status_str}
+
+    local_logger.warning("Case %s not found in get_case_status database lookup.", case_id_norm)
+    return {"case_id": case_id_norm, "status": status_str}
+
+
+def update_case_status(case_id: str, new_status: str) -> str:
+    """
+    Update the status of an incident support case to one of the strict vocabulary states.
+
+    Args:
+        case_id (str): The unique case/ticket identifier (e.g. 'RC001024').
+        new_status (str): The target status. Must be exactly 'Pending', 'Awaiting Confirmation', or 'Closed'.
+
+    Returns:
+        str: A direct confirmation/affirmation message payload.
+    """
+    import streamlit as st
+    import logging
+    from mocks.servicenow import update_case
+
+    local_logger = logging.getLogger("chipLLM.update_case_status")
+    local_logger.info("=== TOOL CALL: update_case_status ===")
+    local_logger.info("case_id: %s, new_status: %s", case_id, new_status)
+
+    allowed_statuses = ["Pending", "Awaiting Confirmation", "Closed"]
+    if new_status not in allowed_statuses:
+        error_msg = f"Invalid status '{new_status}'. Allowed statuses are: {', '.join(allowed_statuses)}."
+        local_logger.error(error_msg)
+        return error_msg
+
+    case_id_norm = case_id.strip().upper()
+
+    try:
+        updated_record = update_case(case_id_norm, {"status": new_status})
+        if updated_record:
+            # Sync session state active tickets
+            if "active_tickets" in st.session_state and st.session_state.active_tickets:
+                for t in st.session_state.active_tickets:
+                    if t.get("id", "").strip().upper() == case_id_norm:
+                        t["status"] = new_status
+                        t["state"] = new_status
+            st.session_state.active_case_id = case_id_norm
+            confirm_msg = f"Successfully updated case {case_id_norm} status to '{new_status}'."
+            local_logger.info(confirm_msg)
+            return confirm_msg
+        else:
+            return f"Error: Case {case_id_norm} not found or could not be updated."
+    except Exception as e:
+        local_logger.exception("Error in update_case_status tool execution: %s", e)
+        return f"An error occurred while updating the case status: {e}"
+
+
 
 class ChipLLMClient:
     """
@@ -509,7 +602,7 @@ class ChipLLMClient:
             temperature=0.3,
             max_output_tokens=1024,
             top_p=0.9,
-            tools=[get_active_tickets, get_case_details, add_case_comment, escalate_case],
+            tools=[get_active_tickets, get_case_details, add_case_comment, escalate_case, get_case_status, update_case_status],
             automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
         )
 
@@ -538,6 +631,10 @@ class ChipLLMClient:
                     result = add_case_comment(**args)
                 elif tc.name == "escalate_case":
                     result = escalate_case(**args)
+                elif tc.name == "get_case_status":
+                    result = get_case_status(**args)
+                elif tc.name == "update_case_status":
+                    result = update_case_status(**args)
                 else:
                     result = {"error": f"Unknown tool: {tc.name}"}
                 function_responses.append(

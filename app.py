@@ -533,30 +533,23 @@ def render_device_detail_form() -> None:
         '<div style="background: rgba(218,41,28,0.10); border: 1px solid rgba(218,41,28,0.45); '
         'border-left: 4px solid var(--accent); padding: 12px 16px; border-radius: 8px; '
         'margin: 8px 0 12px; font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
-        '🎫 <b>Ticket Creation In Progress</b><br/>'
         'Device details help route your ticket faster. Enter what you know — all fields are optional.'
         '</div>',
         unsafe_allow_html=True
     )
 
     with st.form("device_detail_form", border=True):
-        st.markdown(
-            "<div style='font-size:13px; color:#8892a4; margin-bottom:8px;'>"
-            "To help with troubleshooting, can you enter (optional):"
-            "</div>",
-            unsafe_allow_html=True
-        )
         model_val = st.text_input(
-            "Device Model Number",
+            "device model number:",
             placeholder="e.g. Epson TM-T88VI",
             key="device_form_model_input"
         )
         serial_val = st.text_input(
-            "Device Serial Number",
+            "device serial number:",
             placeholder="e.g. X1A2B3C4D5",
             key="device_form_serial_input"
         )
-        submitted = st.form_submit_button("Submit", use_container_width=True)
+        submitted = st.form_submit_button("submit", use_container_width=True)
 
     if submitted:
         # Store whatever was entered (empty = unknown, we skip it)
@@ -564,18 +557,71 @@ def render_device_detail_form() -> None:
             st.session_state.triage_model = model_val.strip()
         if serial_val.strip():
             st.session_state.triage_serial = serial_val.strip()
-        # Advance to q1
-        st.session_state.escalation_triage_step = "q1"
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": (
-                "To help determine priority for this ticket, let's dig in on impact.\n\n"
-                "Is this issue completely stopping your store from taking orders or payments right now?"
-            ),
-            "timestamp": ts_now,
-            "blocked": False
-        })
+        # Finish triage
+        st.session_state.escalation_triage_active = False
+        st.session_state.escalation_triage_step = "complete"
+        st.session_state.ticket_collection_active = True
         st.rerun()
+
+
+def render_priority_form() -> None:
+    """
+    Renders a cute, styled form with 3 mandatory priority/impact questions.
+    """
+    st.markdown(
+        '<div style="background: rgba(255, 199, 44, 0.12); border: 1.5px solid #ffc72c; '
+        'border-left: 5px solid #da291c; padding: 14px 18px; border-radius: 8px; margin: 12px 0; '
+        'font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
+        '📊 <b>Ticket Impact Assessment</b><br/>'
+        'Please answer the following mandatory questions to help determine the priority of your ticket.'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    with st.form("priority_assessment_form", border=True):
+        st.markdown(
+            f"<div class='confirm-header'>📊 Priority Questions</div>",
+            unsafe_allow_html=True
+        )
+
+        st.markdown("<div class='lock-lbl' style='color:#f0f2f8; text-transform:none;'>1. Is this issue completely stopping your store from taking orders or payments right now? <span style='color:var(--accent); font-weight:bold;'>*</span></div>", unsafe_allow_html=True)
+        q1_val = st.radio(
+            "Q1",
+            options=["Yes", "No"],
+            index=None,
+            label_visibility="collapsed",
+            key="priority_form_q1"
+        )
+
+        st.markdown("<div class='lock-lbl' style='color:#f0f2f8; text-transform:none; margin-top:14px;'>2. Is this the only device of its kind in your store? <span style='color:var(--accent); font-weight:bold;'>*</span></div>", unsafe_allow_html=True)
+        q2_val = st.radio(
+            "Q2",
+            options=["Only one", "There are multiples"],
+            index=None,
+            label_visibility="collapsed",
+            key="priority_form_q2"
+        )
+
+        st.markdown("<div class='lock-lbl' style='color:#f0f2f8; text-transform:none; margin-top:14px;'>3. Are the other devices of this kind online and functional? <span style='color:var(--accent); font-weight:bold;'>*</span></div>", unsafe_allow_html=True)
+        q3_val = st.radio(
+            "Q3",
+            options=["Yes", "No"],
+            index=None,
+            label_visibility="collapsed",
+            key="priority_form_q3"
+        )
+
+        submitted = st.form_submit_button("submit", use_container_width=True)
+
+    if submitted:
+        if q1_val is None or q2_val is None or q3_val is None:
+            st.error("⚠️ All priority questions are mandatory. Please select an option for each question.")
+        else:
+            st.session_state.triage_q1 = q1_val
+            st.session_state.triage_q2 = q2_val
+            st.session_state.triage_q3 = q3_val
+            calculate_priority_and_finish_triage()
+            st.rerun()
 
 
 def start_escalation_triage(append_welcome: bool = True):
@@ -588,25 +634,15 @@ def start_escalation_triage(append_welcome: bool = True):
     st.session_state.triage_priority = None
     st.session_state.manual_ticket_flow = False
 
-    is_printer = _is_printer_issue()
-    # Printers use embedded device form; non-printers jump straight to q1
-    first_step = "device_form" if is_printer else "q1"
-    st.session_state.escalation_triage_step = first_step
+    # All devices start with priority form step
+    st.session_state.escalation_triage_step = "priority_form"
 
     ts_now = time.strftime("%H:%M")
     if append_welcome:
-        if is_printer:
-            notice = (
-                "Since these troubleshooting steps didn't resolve the issue, we need to escalate this and create a support ticket.\n\n"
-                "For printer issues, device details help route your ticket faster. "
-                "Please fill in the optional form below."
-            )
-        else:
-            notice = (
-                "Since these troubleshooting steps didn't resolve the issue, we need to escalate this and create a support ticket.\n\n"
-                "To help determine priority for this ticket, let's dig in on impact.\n\n"
-                "Is this issue completely stopping your store from taking orders or payments right now?"
-            )
+        notice = (
+            "Since these troubleshooting steps didn't resolve the issue, we need to escalate this and create a support ticket.\n\n"
+            "To help determine priority for this ticket, an embedded form will launch below. Please fill out the mandatory questions."
+        )
         st.session_state.messages.append({
             "role": "assistant",
             "content": notice,
@@ -614,17 +650,34 @@ def start_escalation_triage(append_welcome: bool = True):
             "blocked": False
         })
     else:
-        # LLM already explained escalation — for printers, device form will appear automatically.
-        # For non-printers, append the q1 question if not already present.
-        if not is_printer:
-            if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
-                last_msg = st.session_state.messages[-1]
-                if "stopping your store" not in last_msg["content"].lower():
-                    last_msg["content"] = (
-                        last_msg["content"].strip()
-                        + "\n\nTo help determine priority for this ticket, let's dig in on impact.\n\n"
-                        "Is this issue completely stopping your store from taking orders or payments right now?"
-                    )
+        # LLM already explained escalation — append the priority check notice if not already present.
+        if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
+            last_msg = st.session_state.messages[-1]
+            
+            # Clean up any LLM-initiated priority/impact questions from the message
+            content = last_msg["content"]
+            lines = content.split("\n")
+            cleaned_lines = []
+            for line in lines:
+                line_lower = line.lower()
+                if any(phrase in line_lower for phrase in [
+                    "how many kiosks are currently affected",
+                    "how many pos are currently affected",
+                    "how many devices are currently affected",
+                    "how many are affected",
+                    "how many are impacted",
+                    "assess the priority of this issue",
+                    "questions to assess the priority",
+                ]):
+                    continue
+                cleaned_lines.append(line)
+            content = "\n".join(cleaned_lines).strip()
+            
+            if "priority assessment" not in content.lower():
+                last_msg["content"] = (
+                    content
+                    + "\n\nTo help determine priority for this ticket, an embedded form will launch below. Please fill out the mandatory questions."
+                )
 
 def reset_triage_state():
     st.session_state.escalation_triage_active = False
@@ -635,6 +688,8 @@ def reset_triage_state():
     st.session_state.triage_q2 = None
     st.session_state.triage_q3 = None
     st.session_state.triage_priority = None
+    if "ticket_extra_info" in st.session_state:
+        st.session_state.ticket_extra_info = ""
 
 def calculate_priority_and_finish_triage():
     q1 = st.session_state.get("triage_q1", "No")
@@ -663,9 +718,16 @@ def calculate_priority_and_finish_triage():
                 priority = "P4"
                 
     st.session_state.triage_priority = priority
-    st.session_state.escalation_triage_active = False
-    st.session_state.escalation_triage_step = "complete"
-    st.session_state.ticket_collection_active = True
+
+    st.session_state.escalation_triage_step = "device_form"
+    ts_now = time.strftime("%H:%M")
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": "An optional embedded form will launch to collect additional details like the device's model and serial number, which will help our technicians? (type serial # in the text box below)",
+        "timestamp": ts_now,
+        "blocked": False
+    })
+
 
 
 
@@ -749,6 +811,25 @@ def get_diagnostic_summary() -> list[tuple[str, str]]:
                 first_msg = first_msg[:27] + "..."
             summary_dict["What is the issue"] = first_msg.capitalize()
 
+    # Pre-populate Type and Number if missing in summary_dict based on global message search
+    # to avoid default fallbacks overriding parsed user values across different fields
+    all_text = " ".join([m["content"] for m in messages]).lower()
+    if "Type" not in summary_dict:
+        if "kiosk" in all_text:
+            summary_dict["Type"] = "Kiosk"
+        elif "kvs" in all_text or "kitchen" in all_text:
+            summary_dict["Type"] = "KVS"
+        else:
+            summary_dict["Type"] = "POS"
+            
+    if "Number" not in summary_dict:
+        num_match = re.search(r"\b(pos|kiosk|kds|kvs|unit)?\s*#?\s*(\d)\b", all_text)
+        t = summary_dict.get("Type", "POS")
+        if num_match:
+            summary_dict["Number"] = f"{t}{num_match.group(2)}"
+        else:
+            summary_dict["Number"] = f"{t}1"
+
     # Core device/issue rows (always shown in Triage Diagnostics)
     core_defaults = [
         ("Type", "POS"),
@@ -765,26 +846,14 @@ def get_diagnostic_summary() -> list[tuple[str, str]]:
     
     core_rows = []
     for key, def_val in core_defaults:
+        if key == "Device Information" and st.session_state.get("triage_priority"):
+            # skip Device Information if we are spelling out Device Model and Serial Number
+            continue
+            
         val = summary_dict.get(key)
         if not val:
-            if key == "Type":
-                all_text = " ".join([m["content"] for m in messages]).lower()
-                if "kiosk" in all_text:
-                    val = "Kiosk"
-                elif "kvs" in all_text or "kitchen" in all_text:
-                    val = "KVS"
-                else:
-                    val = def_val
-            elif key == "Number":
-                all_text = " ".join([m["content"] for m in messages]).lower()
-                num_match = re.search(r"\b(pos|kiosk|kds|kvs|unit)?\s*#?\s*(\d)\b", all_text)
-                t = summary_dict.get("Type", "POS")
-                if num_match:
-                    val = f"{t}{num_match.group(2)}"
-                else:
-                    val = f"{t}1"
-            else:
-                val = def_val
+            val = def_val
+            
         if key == "Device Information":
             t_model = st.session_state.get("triage_model")
             t_serial = st.session_state.get("triage_serial")
@@ -926,47 +995,66 @@ def clean_assistant_message(content: str) -> str:
         )
         content = pattern.sub(replacement, content)
 
-    # 1.5 Intercept escalation notice and put inside a colored box
-    escalation_phrases = [
-        "since these troubleshooting steps didn't resolve the issue, we need to escalate",
-        "since the troubleshooting steps did not resolve the issue",
-        "these troubleshooting steps didn't resolve the issue",
+    # 1.5 Intercept escalation/exhausted steps and insert Ticket Impact Assessment banner
+    # immediately after it, completely removing the "Entering Ticket Creation Flow" banner.
+    exhausted_phrases = [
+        "exhausted the initial troubleshooting steps",
+        "exhausted the common troubleshooting steps",
+        "troubleshooting steps didn't resolve the issue",
+        "troubleshooting steps did not resolve the issue",
+        "did not resolve the issue, we need to escalate",
+        "didn't resolve the issue, we need to escalate",
+        "need to ask a few questions to assess the priority",
+        "assess the priority of this issue",
+        "how many kiosks are currently affected",
+        "how many pos are currently affected",
+        "how many devices are currently affected",
     ]
-    for esc_phrase in escalation_phrases:
-        if esc_phrase in content.lower():
-            # Wrap the sentence containing the escalation notice
+    
+    has_inserted_impact_banner = False
+    
+    for phrase in exhausted_phrases:
+        if phrase in content.lower():
+            # Find the sentence containing this phrase
             import re as _re
-            esc_pattern = _re.compile(
-                r"((?:I understand\.?\s*)?(?:Since|Because)[^.!?]*(?:escalate|support ticket)[^.!?]*[.!?])",
-                _re.IGNORECASE
-            )
-            def _esc_replacer(m):
-                return (
-                    '<div style="background: rgba(218, 41, 28, 0.10); border: 1px solid rgba(218, 41, 28, 0.4); '
-                    'border-left: 4px solid var(--accent); padding: 12px 14px; border-radius: 8px; margin: 10px 0; '
+            match = _re.search(rf'([^.!?\n]*{_re.escape(phrase)}[^.!?\n]*[.!?]?)', content, _re.IGNORECASE)
+            if match:
+                sentence = match.group(1)
+                banner = (
+                    '<div style="background: rgba(255, 199, 44, 0.12); border: 1.5px solid #ffc72c; '
+                    'border-left: 5px solid #da291c; padding: 14px 18px; border-radius: 8px; margin: 12px 0; '
                     'font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
-                    '🚨 <b>Escalation Required</b><br/>'
-                    + m.group(0) +
+                    '📊 <b>Ticket Impact Assessment</b><br/>'
+                    "To help determine priority for this ticket, let's dig in on impact."
                     '</div>'
                 )
-            new_content = esc_pattern.sub(_esc_replacer, content, count=1)
-            if new_content != content:
-                content = new_content
+                # Replace the sentence with the banner followed by the sentence
+                content = content.replace(sentence, banner + "\n\n" + sentence, 1)
+                has_inserted_impact_banner = True
                 break
 
-    # 1.6 Intercept priority/impact notice and put inside a colored box
+    # 1.6 Intercept priority/impact notice and put inside a colored box if not already shown
     priority_text = "To help determine priority for this ticket, let's dig in on impact"
     if priority_text.lower() in content.lower():
-        pattern = re.compile(re.escape(priority_text) + r"\.?", re.IGNORECASE)
-        replacement = (
-            '<div style="background: rgba(218, 41, 28, 0.08); border: 1px solid rgba(255, 199, 44, 0.3); '
-            'border-left: 4px solid var(--accent); padding: 12px 14px; border-radius: 8px; margin: 10px 0; '
-            'font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
-            '📊 <b>Ticket Impact Assessment</b><br/>'
-            "To help determine priority for this ticket, let's dig in on impact."
-            '</div>'
-        )
-        content = pattern.sub(replacement, content)
+        # The device_form step is completely after the priority check, so they haven't seen the banner yet
+        already_shown_in_prev_turn = False
+        
+        if has_inserted_impact_banner or already_shown_in_prev_turn:
+            # Strip the redundant plain text/phrase of priority_text
+            pattern = re.compile(r'To help determine priority for this ticket, let\'s dig in on impact\.?\s*', re.IGNORECASE)
+            content = pattern.sub("", content)
+        else:
+            # Otherwise show the premium McDonald's branded banner
+            pattern = re.compile(re.escape(priority_text) + r"\.?", re.IGNORECASE)
+            replacement = (
+                '<div style="background: rgba(255, 199, 44, 0.12); border: 1.5px solid #ffc72c; '
+                'border-left: 5px solid #da291c; padding: 14px 18px; border-radius: 8px; margin: 12px 0; '
+                'font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
+                '📊 <b>Ticket Impact Assessment</b><br/>'
+                "To help determine priority for this ticket, let's dig in on impact."
+                '</div>'
+            )
+            content = pattern.sub(replacement, content)
 
     # Prevent duplicate cleanups if suffix is already present
     if any(suffix in content for suffix in [
@@ -1251,32 +1339,30 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2) !important;
         }
         .diagnostic-header {
-            font-size: 10px;
-            font-weight: 600;
-            color: #8892a4;
+            font-size: 13.5px;
+            font-weight: 700;
+            color: #ffc72c;
             letter-spacing: 0.8px;
             text-transform: uppercase;
             margin-bottom: 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
             padding-bottom: 6px;
         }
         .diagnostic-row {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-            font-size: 11px;
+            align-items: flex-start;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 14px;
         }
         .diagnostic-row:last-child {
             border-bottom: none;
         }
         .diagnostic-key {
             color: #8892a4;
-            max-width: 60%;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-weight: 500;
+            padding-right: 12px;
         }
         .diagnostic-val {
             color: #f0f2f8;
@@ -1384,6 +1470,25 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
         st.markdown("<div class='lock-lbl' style='color:#8892a4;'>Backup Phone</div>", unsafe_allow_html=True)
         backup_phone_val = st.text_input("Backup Phone", placeholder="(555) 555-0100", label_visibility="collapsed", key="ticket_backup_phone")
         
+    # Card 1.5: Additional Information Card
+    with st.container(border=True):
+        st.markdown(
+            f"<div class='confirm-header'>📝 Additional Information</div>",
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            "<div class='lock-lbl' style='color:#f0f2f8; text-transform:none;'>"
+            "Is there any other information you can provide to the agent about this issue "
+            "(when the problem began, other troubleshooting that has been tried)</div>",
+            unsafe_allow_html=True
+        )
+        st.text_area(
+            "Additional Info",
+            placeholder="e.g. Started after power surge, already rebooted twice...",
+            label_visibility="collapsed",
+            key="ticket_extra_info"
+        )
+
     # Card 2: Manual Ticket Details (if manual flow is active)
     manual_flow = st.session_state.get("manual_ticket_flow", False)
     if manual_flow:
@@ -1420,11 +1525,13 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
     st.markdown(f"<div class='diagnostic-header'>{current_section}</div>", unsafe_allow_html=True)
     for q, a in diag_summary:
         if q == "__section__":
+            if a == current_section:
+                continue
             # Close previous section and open a new one
             current_section = a
             st.markdown(
-                f"<div class='diagnostic-header' style='margin-top:12px; padding-top:12px; "
-                f"border-top: 1px solid rgba(255,255,255,0.06);'>{a}</div>",
+                f"<div class='diagnostic-header' style='margin-top:16px; padding-top:12px; "
+                f"border-top: 1px solid rgba(255,255,255,0.08);'>{a}</div>",
                 unsafe_allow_html=True
             )
             continue
@@ -1495,6 +1602,10 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             b_name = backup_name_val.strip() if backup_name_val.strip() else "None specified"
             b_phone = backup_phone_val.strip() if backup_phone_val.strip() else "None specified"
             diagnostic_dump_lines.append(f"- Backup Contact: {b_name} (Phone: {b_phone})")
+            
+        extra_info = st.session_state.get("ticket_extra_info", "").strip()
+        if extra_info:
+            diagnostic_dump_lines.append(f"- Additional Agent Info: {extra_info}")
 
         # Split diag_summary into core triage rows vs troubleshooting Q&A rows
         diagnostic_dump_lines.append("\n[Triage Diagnostics]")
@@ -1539,6 +1650,9 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
         if manual_flow:
             short_desc = st.session_state.get("ticket_manual_short_desc", "").strip()
             full_description_dump = st.session_state.get("ticket_manual_desc", "").strip()
+            extra_info = st.session_state.get("ticket_extra_info", "").strip()
+            if extra_info:
+                full_description_dump += f"\n\n[Additional Information]\n- {extra_info}"
         else:
             full_description_dump = "\n".join(diagnostic_dump_lines)
             
@@ -1817,13 +1931,6 @@ for i, msg in enumerate(st.session_state.messages):
     avatar = "👤" if role == "user" else "🤖"
     
     with st.chat_message(role, avatar=avatar):
-        # RAG grounding badge above bot responses
-        if role == "assistant" and i in st.session_state.rag_hits:
-            st.markdown(
-                f'<div class="rag-badge">📚 KB: {st.session_state.rag_hits[i]}</div>',
-                unsafe_allow_html=True,
-            )
-
         if msg.get("blocked", False):
             st.markdown(
                 f'<div style="color:#fda4af;border-left:3px solid #f43f5e;'
@@ -1903,14 +2010,17 @@ if st.session_state.ticket_collection_active:
     render_ticket_collection_form(is_live_agent=is_live_agent)
 
 # ---------------------------------------------------------------------------
-# Device Detail Mini-Form (printer escalation: optional model/serial before priority)
+# Device Detail & Priority Forms (escalation triage flow)
 # ---------------------------------------------------------------------------
 
 _triage_active = st.session_state.get("escalation_triage_active", False)
 _triage_step = st.session_state.get("escalation_triage_step")
 
-if _triage_active and _triage_step == "device_form":
-    render_device_detail_form()
+if _triage_active:
+    if _triage_step == "priority_form":
+        render_priority_form()
+    elif _triage_step == "device_form":
+        render_device_detail_form()
 
 # ---------------------------------------------------------------------------
 # Suggestion Chips Rendering Block
@@ -1918,11 +2028,12 @@ if _triage_active and _triage_step == "device_form":
 if "suggestion_click" not in st.session_state:
     st.session_state.suggestion_click = None
 
-# Suppress chips during device_form step (the mini-form replaces them)
+# Suppress chips during form steps (the forms replace them)
 _show_chips = (
     not st.session_state.ticket_collection_active
-    and _triage_step != "device_form"
+    and _triage_step not in ["device_form", "priority_form"]
 )
+if _show_chips:
     last_msg = st.session_state.messages[-1] if st.session_state.messages else None
     if last_msg and last_msg["role"] == "assistant":
         choices = get_choices_from_message(last_msg["content"])
@@ -1981,76 +2092,22 @@ if user_input:
             "blocked": False
         })
         
-        if step == "device_form":
+        if step == "priority_form":
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": "Please complete the mandatory Priority Assessment form above to proceed.",
+                "timestamp": ts_now,
+                "blocked": False
+            })
+            st.rerun()
+            
+        elif step == "device_form":
             # User typed in chat while device form was shown — treat as skip
-            st.session_state.escalation_triage_step = "q1"
-            st.session_state.messages.append({
-                "role": "user",
-                "content": user_input,
-                "timestamp": ts_now,
-                "blocked": False
-            })
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": (
-                    "To help determine priority for this ticket, let's dig in on impact.\n\n"
-                    "Is this issue completely stopping your store from taking orders or payments right now?"
-                ),
-                "timestamp": ts_now,
-                "blocked": False
-            })
-            st.rerun()
-
-        elif step == "model":
-            st.session_state.triage_model = user_input
-            st.session_state.escalation_triage_step = "serial"
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": "Got it. What is the device serial number?",
-                "timestamp": ts_now,
-                "blocked": False
-            })
-            st.rerun()
-            
-        elif step == "serial":
-            st.session_state.triage_serial = user_input
-            st.session_state.escalation_triage_step = "q1"
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": "To help determine priority for this ticket, let's dig in on impact.\n\nIs this issue completely stopping your store from taking orders or payments right now?",
-                "timestamp": ts_now,
-                "blocked": False
-            })
-            st.rerun()
-            
-        elif step == "q1":
-            st.session_state.triage_q1 = user_input
-            st.session_state.escalation_triage_step = "q2"
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": "Is this the only device of its kind in your store?",
-                "timestamp": ts_now,
-                "blocked": False
-            })
-            st.rerun()
-            
-        elif step == "q2":
-            st.session_state.triage_q2 = user_input
-            if "multiple" in user_input.lower():
-                st.session_state.escalation_triage_step = "q3"
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": "Are the other devices of this kind online and functional?",
-                    "timestamp": ts_now,
-                    "blocked": False
-                })
-            else:
-                calculate_priority_and_finish_triage()
-            st.rerun()
-            
-        elif step == "q3":
-            st.session_state.triage_q3 = user_input
-            calculate_priority_and_finish_triage()
+            st.session_state.triage_model = "Unknown"
+            st.session_state.triage_serial = "Unknown"
+            st.session_state.escalation_triage_active = False
+            st.session_state.escalation_triage_step = "complete"
+            st.session_state.ticket_collection_active = True
             st.rerun()
         
     # Intercept live agent keywords

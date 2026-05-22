@@ -12,8 +12,8 @@ def get_store_tickets(store_id: str) -> list[dict]:
     if store_id == "67067":
         return [
             {
-                "id": "INC-001024",
-                "number": "INC-001024",
+                "id": "RC001024",
+                "number": "RC001024",
                 "summary": "Kiosk 3 Cash Acceptor Jammed",
                 "short_description": "Kiosk 3 Cash Acceptor Jammed",
                 "status": "Assigned to Field Tech",
@@ -26,8 +26,8 @@ def get_store_tickets(store_id: str) -> list[dict]:
                 ]
             },
             {
-                "id": "INC-001025",
-                "number": "INC-001025",
+                "id": "RC001025",
+                "number": "RC001025",
                 "summary": "KVS Bumpbar buttons unresponsive in kitchen Zone 1",
                 "short_description": "KVS Bumpbar buttons unresponsive in kitchen Zone 1",
                 "status": "In Progress",
@@ -40,8 +40,8 @@ def get_store_tickets(store_id: str) -> list[dict]:
                 ]
             },
             {
-                "id": "INC-001026",
-                "number": "INC-001026",
+                "id": "RC001026",
+                "number": "RC001026",
                 "summary": "POS 2 receipt printer paper jam sensor failure",
                 "short_description": "POS 2 receipt printer paper jam sensor failure",
                 "status": "New",
@@ -56,7 +56,7 @@ def get_store_tickets(store_id: str) -> list[dict]:
     elif store_id == "67068":
         return [
             {
-                "number": "INC0038401",
+                "number": "RC003840",
                 "short_description": "AC unit in dining area blowing warm air",
                 "priority": "3 - Moderate",
                 "state": "Open",

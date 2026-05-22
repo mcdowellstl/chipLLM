@@ -13,7 +13,7 @@ def parse_comment_update_intent(text: str) -> tuple[str, str] | None:
     
     # 1. Match the prefix including verb and ticket ID
     # Verbs: add a note/comment to/on, update, comment on
-    prefix_pattern = r"(?i)^(?:add\s+(?:a\s+)?(?:note|comment)\s+(?:to|on)|update|comment\s+on)\s+(INC[-_]?\d+)"
+    prefix_pattern = r"(?i)^(?:add\s+(?:a\s+)?(?:note|comment)\s+(?:to|on)|update|comment\s+on)\s+((?:INC|RC)[-_]?\d+)"
     match = re.match(prefix_pattern, text_clean)
     if not match:
         return None
@@ -45,14 +45,14 @@ def parse_comment_update_intent(text: str) -> tuple[str, str] | None:
 
 def test_intent_parsing():
     test_cases = [
-        ("add a note to INC-001024 saying the parts arrived", ("INC-001024", "the parts arrived")),
-        ("add comment to INC-001025: the screen is black", ("INC-001025", "the screen is black")),
-        ("update INC-001026 saying sensor is still red", ("INC-001026", "sensor is still red")),
-        ("add a comment to INC001024 that the kiosk is working now", ("INC001024", "the kiosk is working now")),
-        ("comment on INC-001025: Tech support has arrived", ("INC-001025", "Tech support has arrived")),
-        ("update INC-001026: \"The parts are delayed by 2 days.\"", ("INC-001026", "The parts are delayed by 2 days")),
-        ("add note to INC-001024, the issue is resolved", ("INC-001024", "the issue is resolved")),
-        ("add a comment to INC-001025 saying: no updates yet.", ("INC-001025", "no updates yet")),
+        ("add a note to RC001024 saying the parts arrived", ("RC001024", "the parts arrived")),
+        ("add comment to RC001025: the screen is black", ("RC001025", "the screen is black")),
+        ("update RC001026 saying sensor is still red", ("RC001026", "sensor is still red")),
+        ("add a comment to RC001024 that the kiosk is working now", ("RC001024", "the kiosk is working now")),
+        ("comment on RC001025: Tech support has arrived", ("RC001025", "Tech support has arrived")),
+        ("update RC001026: \"The parts are delayed by 2 days.\"", ("RC001026", "The parts are delayed by 2 days")),
+        ("add note to RC001024, the issue is resolved", ("RC001024", "the issue is resolved")),
+        ("add a comment to RC001025 saying: no updates yet.", ("RC001025", "no updates yet")),
     ]
 
     passed = 0

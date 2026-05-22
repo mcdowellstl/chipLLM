@@ -132,6 +132,8 @@ def check_guardrails(user_message: str) -> GuardrailResult:
 
     # --- Check 2: Escalation intent detection --------------------------------
     escalation_hit = any(kw in msg_lower for kw in _ESCALATION_KEYWORDS)
+    if escalation_hit and is_ticket_status_lookup_intent(user_message):
+        escalation_hit = False
 
     # --- Check 3: Resolution detection ---------------------------------------
     resolution_hit = any(kw in msg_lower for kw in _RESOLUTION_KEYWORDS)
@@ -221,5 +223,38 @@ def is_cafe_issue(user_message: str) -> bool:
         return True
         
     return False
+
+
+def is_ticket_status_lookup_intent(text: str) -> bool:
+    """
+    Checks if the user's message is asking about existing ticket statuses, open cases,
+    or recent store issues, rather than asking to create/open a new ticket.
+    """
+    import re
+    if not text:
+        return False
+    lower_text = text.strip().lower()
+    
+    # If a specific ticket ID is mentioned, it's definitely a lookup/status check
+    if re.search(r"\b(?:inc|rc00|rc)[-_]?\d+\b", lower_text):
+        return True
+        
+    # Flexible check for recent ticket inquiries
+    if "recent" in lower_text and any(w in lower_text for w in ["issue", "ticket", "case"]):
+        return True
+        
+    # Phrases indicating lookup/inquiry about existing tickets/cases
+    lookup_keywords = [
+        "active tickets", "open tickets", "my tickets", "store tickets", "existing tickets",
+        "active cases", "open cases", "my cases", "store cases", "existing cases",
+        "ticket status", "case status", "status of my", "status of the", "status of inc", "status of rc", "status of rc00",
+        "check status", "check ticket", "check case", "any tickets", "any cases",
+        "list tickets", "list cases", "show tickets", "show cases", "recent issues",
+        "recent tickets", "recent cases", "view tickets", "view cases", "what tickets",
+        "what cases", "current tickets", "current cases", "outstanding tickets",
+        "outstanding cases", "status check"
+    ]
+    
+    return any(kw in lower_text for kw in lookup_keywords)
 
 

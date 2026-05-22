@@ -23,7 +23,7 @@ logger = logging.getLogger("chipLLM")
 
 import streamlit as st
 
-from guardrails import check_guardrails, is_greeting_or_small_talk, is_cafe_issue
+from guardrails import check_guardrails, is_greeting_or_small_talk, is_cafe_issue, is_ticket_status_lookup_intent
 from knowledge_base import retrieve_context
 from llm_client import ChipLLMClient, extract_ticket_metadata
 
@@ -926,37 +926,7 @@ def check_escalation_intent(user_input: str) -> bool:
     return any(kw in lower_input for kw in keywords)
 
 
-def is_ticket_status_lookup_intent(text: str) -> bool:
-    """
-    Checks if the user's message is asking about existing ticket statuses, open cases,
-    or recent store issues, rather than asking to create/open a new ticket.
-    """
-    import re
-    if not text:
-        return False
-    lower_text = text.strip().lower()
-    
-    # If a specific ticket ID is mentioned, it's definitely a lookup/status check
-    if re.search(r"\binc[-_]?\d+\b", lower_text):
-        return True
-        
-    # Flexible check for recent ticket inquiries
-    if "recent" in lower_text and any(w in lower_text for w in ["issue", "ticket", "case"]):
-        return True
-        
-    # Phrases indicating lookup/inquiry about existing tickets/cases
-    lookup_keywords = [
-        "active tickets", "open tickets", "my tickets", "store tickets", "existing tickets",
-        "active cases", "open cases", "my cases", "store cases", "existing cases",
-        "ticket status", "case status", "status of my", "status of the", "status of inc",
-        "check status", "check ticket", "check case", "any tickets", "any cases",
-        "list tickets", "list cases", "show tickets", "show cases", "recent issues",
-        "recent tickets", "recent cases", "view tickets", "view cases", "what tickets",
-        "what cases", "current tickets", "current cases", "outstanding tickets",
-        "outstanding cases", "status check"
-    ]
-    
-    return any(kw in lower_text for kw in lookup_keywords)
+# (is_ticket_status_lookup_intent is now imported from guardrails)
 
 
 def parse_comment_update_intent(text: str) -> tuple[str, str] | None:
@@ -971,7 +941,7 @@ def parse_comment_update_intent(text: str) -> tuple[str, str] | None:
     
     # 1. Match the prefix including verb and ticket ID
     # Verbs: add a note/comment to/on, update, comment on
-    prefix_pattern = r"(?i)^(?:add\s+(?:a\s+)?(?:note|comment)\s+(?:to|on)|update|comment\s+on)\s+(INC[-_]?\d+)"
+    prefix_pattern = r"(?i)^(?:add\s+(?:a\s+)?(?:note|comment)\s+(?:to|on)|update|comment\s+on)\s+((?:INC|RC)[-_]?\d+)"
     match = re.match(prefix_pattern, text_clean)
     if not match:
         return None
@@ -2021,8 +1991,8 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                     st.stop()
                     
             import random
-            # ServiceNow Ticket Number format: INC followed by 7 digits
-            inc_num = f"INC{random.randint(1000000, 9999999)}"
+            # ServiceNow Ticket Number format: RC00 followed by 4 digits
+            inc_num = f"RC00{random.randint(1000, 9999)}"
             
             # Determine category and sub-category dynamically
             all_chat_text = " ".join([m["content"] for m in st.session_state.messages]).lower()
@@ -2903,23 +2873,7 @@ if user_input:
                 rag_title = playbook["title"]
                 logger.info("RAG playbook hit: '%s'", rag_title)
             else:
-                logger.info("RAG playbook miss (no match found).")
-                # No RAG match — only show the choice stopper on the FIRST user message
-                # (mid-flow replies like "No" or "yes" should not trigger this)
-                num_user_msgs = sum(1 for m in st.session_state.messages if m["role"] == "user")
-                if num_user_msgs <= 1 and not is_greeting_or_small_talk(user_input):
-                    _ts_no_rag = time.strftime("%H:%M")
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": (
-                            "I wasn't able to find a matching troubleshooting playbook for that issue in our knowledge base. "
-                            "How would you like to proceed? (Open a support ticket/Live Chat with an Agent)"
-                        ),
-                        "timestamp": _ts_no_rag,
-                        "blocked": False,
-                    })
-                    st.rerun()
-                # else: fall through to LLM call with no RAG context
+                logger.info("RAG playbook miss (no match found). Proceeding to conversational LLM fallback.")
 
         # --- Layer 4: LLM call (streaming) -------------------------------------
         with st.chat_message("assistant", avatar="👨‍💻"):

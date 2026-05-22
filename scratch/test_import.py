@@ -8,9 +8,9 @@ try:
     print("SUCCESS: Imported parse_comment_update_intent from app successfully!")
     
     # Quick sanity check
-    res = parse_comment_update_intent("add note to INC-001024 saying test message")
+    res = parse_comment_update_intent("add note to RC001024 saying test message")
     print(f"Sanity check result: {res}")
-    assert res == ("INC-001024", "test message")
+    assert res == ("RC001024", "test message")
     print("Sanity check passed!")
 except Exception as e:
     import traceback

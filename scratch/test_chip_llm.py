@@ -45,7 +45,7 @@ def test_conversational_lookup():
     
     # 2. Ask about comment history
     messages.append({"role": "assistant", "content": "".join(response_chunks)})
-    messages.append({"role": "user", "content": "Can you check the recent comment updates or notes on INC-001024?"})
+    messages.append({"role": "user", "content": "Can you check the recent comment updates or notes on RC001024?"})
     
     print("\n--- Test 2: Querying comment history ---")
     print(f"User: {messages[-1]['content']}\nChip: ", end="", flush=True)

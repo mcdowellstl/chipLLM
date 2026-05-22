@@ -15,7 +15,7 @@ def is_ticket_status_lookup_intent(text: str) -> bool:
     lower_text = text.strip().lower()
     
     # If a specific ticket ID is mentioned, it's definitely a lookup/status check
-    if re.search(r"\binc[-_]?\d+\b", lower_text):
+    if re.search(r"\b(?:inc|rc00|rc)[-_]?\d+\b", lower_text):
         return True
         
     # Flexible check for recent ticket inquiries
@@ -26,7 +26,7 @@ def is_ticket_status_lookup_intent(text: str) -> bool:
     lookup_keywords = [
         "active tickets", "open tickets", "my tickets", "store tickets", "existing tickets",
         "active cases", "open cases", "my cases", "store cases", "existing cases",
-        "ticket status", "case status", "status of my", "status of the", "status of inc",
+        "ticket status", "case status", "status of my", "status of the", "status of inc", "status of rc", "status of rc00",
         "check status", "check ticket", "check case", "any tickets", "any cases",
         "list tickets", "list cases", "show tickets", "show cases", "recent issues",
         "recent tickets", "recent cases", "view tickets", "view cases", "what tickets",
@@ -41,13 +41,13 @@ def test_lookup_intent():
         "are there any active tickets open for my store?",
         "what is the status of my tickets?",
         "are there any open tickets?",
-        "check ticket INC-001024",
+        "check ticket RC001024",
         "show my tickets",
         "do we have any open tickets?",
         "any tickets open?",
         "status check",
         "status check on tickets",
-        "ticket INC-001024 status",
+        "ticket RC001024 status",
         "recent store issues",
         "are there any open cases?",
     ]

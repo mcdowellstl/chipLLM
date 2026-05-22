@@ -1273,8 +1273,11 @@ def get_choices_from_message(content: str) -> list[str]:
         return []
 
     # 0. No-KB-match or troubleshooting exhausted stopper choices
+    # Do NOT display buttons when the user is doing anything involving ticket/case status
+    last_user_input = st.session_state.get("last_user_input", "")
     if "how would you like to proceed" in content_lower and ("open a support ticket" in content_lower or "live chat" in content_lower):
-        return ["Open a support ticket", "Live Chat with an Agent"]
+        if not is_ticket_status_lookup_intent(last_user_input):
+            return ["Open a support ticket", "Live Chat with an Agent"]
 
     # 0. Case routing choices
     if "cases with more details" in content_lower or "quicker resolution" in content_lower:
@@ -2864,6 +2867,7 @@ elif chat_val:
 
 if user_input:
     logger.info("Received user chat input: %s", user_input)
+    st.session_state.last_user_input = user_input
     ts_now = time.strftime("%H:%M")
     lower_input = user_input.lower()
     

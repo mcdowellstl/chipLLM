@@ -131,7 +131,8 @@ def check_guardrails(user_message: str) -> GuardrailResult:
         )
 
     # --- Check 2: Escalation intent detection --------------------------------
-    escalation_hit = any(kw in msg_lower for kw in _ESCALATION_KEYWORDS)
+    import re
+    escalation_hit = any(re.search(r"\b" + re.escape(kw) + r"\b", msg_lower) for kw in _ESCALATION_KEYWORDS)
     if escalation_hit and is_ticket_status_lookup_intent(user_message):
         escalation_hit = False
 

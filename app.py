@@ -736,9 +736,12 @@ def sync_triage_from_messages() -> None:
         else:
             summary_dict["Asset Number"] = "Unknown"
 
-    # Merge into current_triage without overwriting form fields if already present
+    # Merge into current_triage without overwriting existing explicit form data
     for k, v in summary_dict.items():
-        st.session_state.current_triage[k] = v
+        current_val = st.session_state.current_triage.get(k)
+        # Only write if key is missing or currently set to a default fallback
+        if current_val is None or current_val in ["Unknown", "Skipped device info"]:
+            st.session_state.current_triage[k] = v
 
 sync_triage_from_messages()
 
@@ -917,13 +920,23 @@ def start_escalation_triage(append_welcome: bool = True):
 def check_escalation_intent(user_input: str) -> bool:
     """
     Checks if the user input implies an escalation to a human agent.
-    Matches variations of "talk to a human" or "live agent" case-insensitively.
+    Uses regex word boundaries to prevent false positives from substring matching.
     """
     if not user_input:
         return False
     lower_input = user_input.lower()
-    keywords = ["agent", "human", "representative", "person", "live chat", "operator", "help"]
-    return any(kw in lower_input for kw in keywords)
+    
+    # Strict action patterns indicating human transfer intent
+    patterns = [
+        r"\b(?:talk\s+to|speak\s+with|transfer\s+to|connect\s+to|connect\s+me\s+to)(?:\s+(?:a|an|the))?\s+(?:agent|human|representative|person|operator|supervisor|manager)\b",
+        r"\b(?:live\s+agent|live\s+chat|real\s+person|human\s+support)\b",
+        r"\b(?:escalate\s+to|escalate\s+this\s+to|escalate\s+my|escalate\s+our)\b",
+        r"\b(?:open|create|submit|raise)\s+(?:a\s+)?ticket\b",
+        r"\b(?:servicenow|genesys)\b"
+    ]
+    
+    import re
+    return any(re.search(pat, lower_input) for pat in patterns)
 
 
 # (is_ticket_status_lookup_intent is now imported from guardrails)
@@ -1898,6 +1911,83 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                     first_user_msg = m["content"].replace("**", "").replace("`", "").strip()
                     break
 
+        # Pre-populate description field with troubleshooting diagnostics and steps if not already filled
+        if "ticket_manual_desc" not in st.session_state:
+            p_val = st.session_state.get("ticket_phone", "(570) 555-0142")
+            b_name_val = st.session_state.get("ticket_backup_name", "")
+            b_phone_val = st.session_state.get("ticket_backup_phone", "")
+            
+            diagnostic_dump_lines = []
+            diagnostic_dump_lines.append("[Device Details]")
+            diagnostic_dump_lines.append(f"- Store ID: {active_store}")
+            diagnostic_dump_lines.append(f"- Location: {store_location}")
+            diagnostic_dump_lines.append(f"- Reporter: Jim Halpert (Phone: {p_val})")
+            
+            t_model = st.session_state.current_triage.get("Device Model")
+            if t_model and t_model != "Unknown":
+                diagnostic_dump_lines.append(f"- Device Model: {t_model}")
+            t_serial = st.session_state.current_triage.get("Serial Number")
+            if t_serial and t_serial != "Unknown":
+                diagnostic_dump_lines.append(f"- Serial Number: {t_serial}")
+            t_priority = st.session_state.current_triage.get("Priority")
+            if t_priority:
+                diagnostic_dump_lines.append(f"- Calculated Priority: {t_priority}")
+                
+            if b_name_val.strip() or b_phone_val.strip():
+                b_name_str = b_name_val.strip() if b_name_val.strip() else "None specified"
+                b_phone_str = b_phone_val.strip() if b_phone_val.strip() else "None specified"
+                diagnostic_dump_lines.append(f"- Backup Contact: {b_name_str} (Phone: {b_phone_str})")
+                
+            extra_info_val = st.session_state.get("ticket_extra_info", "").strip()
+            if extra_info_val:
+                diagnostic_dump_lines.append(f"- Additional Agent Info: {extra_info_val}")
+    
+            # Split current_triage into core triage rows vs troubleshooting Q&A rows
+            diagnostic_dump_lines.append("\n[Triage Diagnostics]")
+            triage_keys_local = [
+                "Device Type", "Asset Number", "Issue Description", "Device Model",
+                "Serial Number", "Stopping Orders/Payments", "Only Device of its Kind",
+                "Other Devices Functional", "Priority"
+            ]
+            for k in triage_keys_local:
+                v = st.session_state.current_triage.get(k)
+                if v is not None and str(v).strip():
+                    diagnostic_dump_lines.append(f"- {k}: {v}")
+    
+            # Troubleshooting steps section
+            diagnostic_dump_lines.append("\n[Troubleshooting Steps Attempted]")
+            troubleshooting_keys_local = [
+                "Is there visible paper", "Internal Jam Roller C", "Are you OTP or OTP cer"
+            ]
+            ts_dump_count = 0
+            for k in troubleshooting_keys_local:
+                v = st.session_state.current_triage.get(k)
+                if v is not None and str(v).strip():
+                    diagnostic_dump_lines.append(f"- {k}: {v}")
+                    ts_dump_count += 1
+                    
+            # Then add any assistant-driven step summaries from chat messages
+            step_index = ts_dump_count + 1
+            for msg in st.session_state.messages:
+                if msg["role"] == "assistant":
+                    content = msg["content"]
+                    if any(step_kw in content for step_kw in ["Reboot", "Power cycle", "Clear the Paper Jam", "Clean the Card Reader", "Restart"]):
+                        step_title = "Step"
+                        for line in content.split('\n'):
+                            if any(kw in line for kw in ["Reboot", "Jam", "Cable", "Power", "Reader"]):
+                                step_title = line.replace("**", "").replace("`", "").replace("##", "").strip()
+                                break
+                        diagnostic_dump_lines.append(f"{step_index}. {step_title} (Attempted) -> Outcome: Did not resolve the issue.")
+                        step_index += 1
+    
+            if step_index == 1 and ts_dump_count == 0:
+                diagnostic_dump_lines.append("- No troubleshooting steps could be attempted or they were skipped.")
+                
+            diagnostic_dump_lines.append("\n[System Action]")
+            diagnostic_dump_lines.append("- Escalated to ServiceNow via chat session with support engineer Chip.")
+            
+            st.session_state.ticket_manual_desc = "\n".join(diagnostic_dump_lines)
+
         with st.container(border=True):
             st.markdown(
                 "<div class='confirm-header'>📝 Enter Ticket Details "
@@ -2469,7 +2559,25 @@ def render_extra_context_form() -> None:
             key="escalation_image_upload"
         )
         
-        submitted = st.form_submit_button("Submit & Transfer to Live Queue", use_container_width=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            submitted = st.form_submit_button("Submit & Transfer to Live Queue", use_container_width=True)
+        with col2:
+            cancelled = st.form_submit_button("Cancel & Return to Chat", use_container_width=True)
+            
+    if cancelled:
+        logger.info("Stage 2 extra context form cancelled. Returning to automated chat.")
+        st.session_state.escalated = False
+        st.session_state.escalation_stage = None
+        st.session_state.escalation_triage_active = False
+        st.session_state.escalation_triage_step = None
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": "❌ **Escalation cancelled.** We are back in the automated support chat. How can I help you troubleshoot today?",
+            "timestamp": time.strftime("%H:%M"),
+            "blocked": False
+        })
+        st.rerun()
         
     if submitted:
         notes_str = user_notes.strip() if user_notes.strip() else "None provided."

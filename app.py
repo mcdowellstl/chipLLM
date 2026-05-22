@@ -160,12 +160,12 @@ html, body, [class*="css"] {
   background: rgba(255,255,255,.06) !important;
   border: 1px solid rgba(255,255,255,.12) !important;
   color: #f0f2f8 !important;
-  font-size: 18px !important;
+  font-size: 15px !important;
   font-weight: 700 !important;
-  padding: 0 12px !important;
-  min-height: 48px !important;
-  height: 48px !important;
-  border-radius: 10px !important;
+  padding: 0 10px !important;
+  min-height: 42px !important;
+  height: 42px !important;
+  border-radius: 8px !important;
   line-height: 1.2 !important;
   letter-spacing: .1px !important;
   margin-top: 2px !important;
@@ -183,13 +183,13 @@ html, body, [class*="css"] {
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] svg {
   fill: #8892a4 !important;
-  width: 18px !important;
-  height: 18px !important;
+  width: 16px !important;
+  height: 16px !important;
 }
 
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [data-baseweb="select"] {
-  height: 48px !important;
+  height: 42px !important;
 }
 
 /* Override default large padding inside the header selectbox to fit store text */
@@ -2228,6 +2228,24 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             logger.info("Submitting support ticket to ServiceNow. Store ID: %s, Category: %s, Sub-category: %s", active_store, category, sub_category)
             logger.info("ServiceNow Ticket Payload: %s", json.dumps(meta, indent=2))
             
+            # Create the case in Supabase/storage layer
+            from mocks.servicenow import create_case, get_active_cases
+            create_case({
+                "id": inc_num,
+                "store_id": active_store,
+                "summary": short_desc,
+                "status": "New",
+                "comments": [
+                    {
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "author": "System",
+                        "text": f"Incident open. Description: {short_desc}"
+                    }
+                ]
+            })
+            # Refresh active cases count and list immediately
+            st.session_state.active_tickets = get_active_cases(active_store)
+            
             st.session_state.ticket_metadata = meta
             st.session_state.escalation_triggered = True
             
@@ -2425,15 +2443,15 @@ def load_store_context():
 # ---------------------------------------------------------------------------
 
 st.markdown('<div id="header-sentinel"></div>', unsafe_allow_html=True)
-h_col1, h_col2 = st.columns([1.3, 1.9], gap="small")
+h_col1, h_col2 = st.columns([1.1, 2.1], gap="small")
 
 with h_col1:
     st.markdown(
         f"""
-        <div style="display:flex; align-items:center; gap:12px; height: 100%; margin-top: 2px;">
-            <div style="font-size:28px; background:linear-gradient(135deg, var(--accent) 0%, var(--text-accent) 100%); width:46px; height:46px; border-radius:10px; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 8px var(--accent-glow); flex-shrink:0;">🍔</div>
+        <div style="display:flex; align-items:center; gap:10px; height: 100%; margin-top: 2px;">
+            <div style="font-size:24px; background:linear-gradient(135deg, var(--accent) 0%, var(--text-accent) 100%); width:40px; height:40px; border-radius:8px; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 8px var(--accent-glow); flex-shrink:0;">🍔</div>
             <div style="min-width:0;">
-                <div style="font-size:28px; font-weight:800; color:#f0f2f8; line-height:1.0; letter-spacing:-0.5px; padding-bottom: 2px;">Chip</div>
+                <div style="font-size:24px; font-weight:800; color:#f0f2f8; line-height:1.0; letter-spacing:-0.5px; padding-bottom: 2px;">Chip</div>
             </div>
         </div>
         """,
@@ -2441,7 +2459,7 @@ with h_col1:
     )
 
 with h_col2:
-    col_store, col_metric = st.columns([1.7, 1.3], gap="small")
+    col_store, col_metric = st.columns([1.0, 1.0], gap="small")
     with col_store:
         selected_store = st.selectbox(
             "Header Store select",
@@ -2460,23 +2478,24 @@ with h_col2:
                 background: rgba(255, 255, 255, 0.06);
                 border: 1px solid rgba(255, 255, 255, 0.12);
                 color: #f0f2f8;
-                font-size: 18px;
+                font-size: 15px;
                 font-weight: 700;
-                padding: 0 12px;
-                min-height: 48px;
-                height: 48px;
-                border-radius: 10px;
-                line-height: 46px;
+                padding: 0 10px;
+                min-height: 42px;
+                height: 42px;
+                border-radius: 8px;
+                line-height: 40px;
                 letter-spacing: 0.1px;
                 margin-top: 2px;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                gap: 8px;
+                gap: 6px;
                 width: 100%;
                 box-sizing: border-box;
+                white-space: nowrap;
             ">
-                <span style="font-size: 18px;">📋</span> Active Cases: <span style="color: var(--accent); font-weight: 700; margin-left: 2px; font-size: 18px;">{active_count}</span>
+                <span style="font-size: 15px;">📋</span> Active Cases: <span style="color: var(--accent); font-weight: 700; margin-left: 2px; font-size: 15px;">{active_count}</span>
             </div>
             """,
             unsafe_allow_html=True
@@ -2842,11 +2861,17 @@ if user_input:
             timestamp_str = time.strftime("%Y-%m-%d %H:%M:%S")
             if "comments" not in found_ticket:
                 found_ticket["comments"] = []
-            found_ticket["comments"].append({
+            new_comment = {
                 "timestamp": timestamp_str,
                 "author": "Manager Jim",
                 "text": comment_text
-            })
+            }
+            found_ticket["comments"].append(new_comment)
+            
+            # Persist comment update to the database layer
+            from mocks.servicenow import update_case
+            update_case(found_ticket["id"], {"comments": found_ticket["comments"]})
+            
             st.session_state.active_tickets = active_tickets
             
             confirm_msg = f"Got it, I've added that note to case {found_ticket.get('id', ticket_id)} for you."

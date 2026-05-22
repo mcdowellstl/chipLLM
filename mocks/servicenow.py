@@ -336,3 +336,145 @@ def get_store_mims(store_id: str) -> list[dict]:
             }
         ]
     return []
+
+
+def append_case_comment(case_id: str, comment_text: str, author: str = "Store Manager") -> dict:
+    """
+    Append a new comment object to the JSONB comments array of the target case row.
+
+    Performs a read-then-write:
+      1. SELECT the existing comments array for the case.
+      2. Append {"text": ..., "author": ..., "timestamp": "YYYY-MM-DD HH:MM:SS"}.
+      3. UPDATE the row with the new comments array.
+
+    Args:
+        case_id (str): The exact case ID (e.g. 'RC001024').
+        comment_text (str): The body text for the new comment.
+        author (str): Display name for the comment author. Defaults to 'Store Manager'.
+
+    Returns:
+        dict: The updated case record, or an error dict on failure.
+    """
+    from datetime import datetime
+    logger.info("=== DB WRITE START: append_case_comment ===")
+    logger.info("case_id: %s, author: %s, text: %s", case_id, author, comment_text)
+
+    new_comment = {
+        "text": comment_text,
+        "author": author,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+    if supabase:
+        try:
+            # 1. Read current comments
+            read_resp = (
+                supabase.table("cases")
+                .select("comments")
+                .eq("id", case_id)
+                .single()
+                .execute()
+            )
+            existing = read_resp.data.get("comments") or []
+            if not isinstance(existing, list):
+                existing = []
+
+            # 2. Append
+            existing.append(new_comment)
+
+            # 3. Write back
+            write_resp = (
+                supabase.table("cases")
+                .update({"comments": existing})
+                .eq("id", case_id)
+                .execute()
+            )
+            if write_resp.data:
+                result = _normalize_case_for_app(write_resp.data[0])
+                logger.info("Supabase comment append successful for case %s.", case_id)
+                return result
+            else:
+                logger.warning("Supabase comment append returned empty data for case %s.", case_id)
+        except Exception as e:
+            _log_db_exception("append_case_comment", e)
+            logger.warning("Supabase append_case_comment failed. Falling back to mock database.")
+
+    # Mock fallback — mutate in-place
+    logger.info("Using mock fallback for append_case_comment.")
+    for store_cases in MOCK_DATABASE.values():
+        for case in store_cases:
+            if case.get("id") == case_id:
+                if not isinstance(case.get("comments"), list):
+                    case["comments"] = []
+                case["comments"].append(new_comment)
+                logger.info("Mock comment appended to case %s. Total comments: %d", case_id, len(case["comments"]))
+                return _normalize_case_for_app(case)
+
+    logger.warning("Case %s not found in mock database for comment append.", case_id)
+    return {"error": f"Case {case_id} not found."}
+
+
+def increment_escalations(case_id: str) -> dict:
+    """
+    Increment the escalations counter for the target case row by 1.
+
+    Performs a read-then-write:
+      1. SELECT the current escalations scalar for the case.
+      2. Increment by 1.
+      3. UPDATE the row with the new count.
+
+    Args:
+        case_id (str): The exact case ID (e.g. 'RC001024').
+
+    Returns:
+        dict: The updated case record with the new escalations value, or an error dict.
+    """
+    logger.info("=== DB WRITE START: increment_escalations ===")
+    logger.info("case_id: %s", case_id)
+
+    if supabase:
+        try:
+            # 1. Read current escalation count
+            read_resp = (
+                supabase.table("cases")
+                .select("escalations")
+                .eq("id", case_id)
+                .single()
+                .execute()
+            )
+            current = read_resp.data.get("escalations") or 0
+            if not isinstance(current, int):
+                current = int(current) if current is not None else 0
+            new_count = current + 1
+
+            # 2. Write back
+            write_resp = (
+                supabase.table("cases")
+                .update({"escalations": new_count})
+                .eq("id", case_id)
+                .execute()
+            )
+            if write_resp.data:
+                result = _normalize_case_for_app(write_resp.data[0])
+                logger.info("Supabase escalation increment successful for case %s. New count: %d", case_id, new_count)
+                return result
+            else:
+                logger.warning("Supabase escalation increment returned empty data for case %s.", case_id)
+        except Exception as e:
+            _log_db_exception("increment_escalations", e)
+            logger.warning("Supabase increment_escalations failed. Falling back to mock database.")
+
+    # Mock fallback — mutate in-place
+    logger.info("Using mock fallback for increment_escalations.")
+    for store_cases in MOCK_DATABASE.values():
+        for case in store_cases:
+            if case.get("id") == case_id:
+                current = case.get("escalations") or 0
+                if not isinstance(current, int):
+                    current = 0
+                case["escalations"] = current + 1
+                logger.info("Mock escalation incremented for case %s. New count: %d", case_id, case["escalations"])
+                return _normalize_case_for_app(case)
+
+    logger.warning("Case %s not found in mock database for escalation increment.", case_id)
+    return {"error": f"Case {case_id} not found."}

@@ -543,6 +543,9 @@ if "store_confirmed" not in st.session_state:
 if "active_store" not in st.session_state:
     st.session_state.active_store = DEFAULT_STORE
     logger.info("Session initialized. Default store set to %s.", st.session_state.active_store)
+# Track the last case the user viewed/discussed so mutation tools have a target
+if "active_case_id" not in st.session_state:
+    st.session_state.active_case_id = None
 if "active_tickets" not in st.session_state:
     from mocks.servicenow import get_store_tickets
     st.session_state.active_tickets = get_store_tickets(st.session_state.active_store)
@@ -1261,13 +1264,16 @@ def get_choices_from_message(content: str) -> list[str]:
     content_lower = content.lower()
     
     # 0. Case detail view — ALWAYS suppress chips/buttons entirely.
-    # Matches all case detail view markers including the new two-line closing block.
+    # Matches all case detail view markers including mutation confirmation responses.
     if ("activity:" in content_lower
             or "recent activity" in content_lower
             or "how do you want to handle this" in content_lower
             or "what's the plan for this issue" in content_lower
             or "you can update status" in content_lower
-            or "what would you like to do next" in content_lower):
+            or "what would you like to do next" in content_lower
+            or "your comment has been added" in content_lower
+            or "has been escalated" in content_lower
+            or "escalation count is now" in content_lower):
         return []
 
     # 0. Case options prompt bubbles - BANNED under UI Reboot
@@ -3496,6 +3502,15 @@ if user_input:
                 cleaned_final = clean_assistant_message(full_response)
                 response_placeholder.markdown(cleaned_final, unsafe_allow_html=True)
                 logger.info("Completed Gemini API streaming response. Response length: %d chars", len(full_response))
+
+                # Auto-track active_case_id: if the response is a detail view, capture the case ID
+                import re as _re
+                _case_match = _re.search(r'\bTicket\s+(RC\w+)\b', full_response)
+                if _case_match:
+                    _detected_id = _case_match.group(1)
+                    if st.session_state.get("active_case_id") != _detected_id:
+                        st.session_state.active_case_id = _detected_id
+                        logger.info("active_case_id set to %s from detail view response.", _detected_id)
 
             except Exception as exc:
                 logger.exception("Gemini API streaming failed")

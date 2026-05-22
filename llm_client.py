@@ -152,6 +152,32 @@ CRITICAL LAYOUT RULES:
 - Keep your tone direct and helpful, but ensure the list and detail views are displayed exactly as described.
 
 
+## Case Mutation — ADD COMMENT and ESCALATE
+
+When the user wants to update a case by adding a comment or escalating it, use the registered tools. Always use `case_id` from the active case context (the last case that was viewed or discussed in this conversation).
+
+### Add Comment — Slot-Filling Rules
+- **Intent with text** (e.g. `add comment "kiosk is still down"` or `log "tech arrived on site"`):
+  Call `add_case_comment` immediately with the stated `case_id` and the quoted or stated text. Do NOT ask for confirmation first.
+- **Intent without text** (e.g. `I want to add a comment`, `add a note`, `log something`):
+  Do NOT call the tool yet. Ask exactly: `"What would you like the comment to say?"` — wait for the reply, then call `add_case_comment` with that text.
+- On success, confirm naturally: `"Done — your comment has been added to [case_id]."`
+
+### Escalate — Direct Execution
+- When the user says they want to escalate, flag urgency, or bump priority on the active case:
+  Call `escalate_case` with the active `case_id` immediately.
+- On success, confirm: `"Got it — [case_id] has been escalated. Escalation count is now [N]."`
+
+### No Case in Context Guard
+- NEVER guess a `case_id`. If no case has been discussed in this conversation and the user gives no ID, ask: `"Which case would you like to update?"`
+- Once the user provides a case ID, use it for all subsequent mutation tool calls in this session.
+
+### Critical Rules
+- **ZERO PARENTHETICAL OPTIONS** after any confirmation message. Never list action menus after a successful write.
+- **NO DOUBLE EXECUTION**: Call each mutation tool exactly once per user intent. Do not retry or re-confirm.
+- **STAY IN CONTEXT**: After a successful mutation, do not re-display the full case detail view. A short confirmation is sufficient.
+
+
 ## Smart Fallback Handling & Refusal Avoidance
 - If a user describes an issue that is ambiguous, unclear, or hard to diagnose, DO NOT refuse to answer, and DO NOT give a generic rejection. Instead, ask a smart, conversational clarifying question about the device, symptom, or error code to help narrow it down (e.g., "Hi there! That sounds tricky. Which device is showing that error, and do you see an error code on the screen?").
 
@@ -334,9 +360,80 @@ def get_case_details(case_id: str) -> dict:
         return {"error": str(e)}
 
 
-# ---------------------------------------------------------------------------
-# LLM Client
-# ---------------------------------------------------------------------------
+def add_case_comment(case_id: str, comment_text: str) -> str:
+    """
+    Add a comment to an existing support case in the database.
+
+    Use this when the user wants to log a note, update, or observation on a specific case.
+    If the user expresses intent to add a comment but does NOT provide the comment text,
+    ask: "What would you like the comment to say?" and wait for the reply before calling this.
+
+    Args:
+        case_id (str): The exact case ID to update (e.g. 'RC001024'). Use the active case
+                       from context. If unclear, ask the user which case they mean.
+        comment_text (str): The full text of the comment to add. Must be non-empty.
+
+    Returns:
+        str: A natural-language confirmation message suitable for displaying to the user.
+    """
+    import streamlit as st
+    import logging
+
+    local_logger = logging.getLogger("chipLLM.add_case_comment")
+    local_logger.info("=== TOOL CALL: add_case_comment ===")
+    local_logger.info("case_id: %s, comment_text: %s", case_id, comment_text)
+
+    try:
+        from mocks.servicenow import append_case_comment
+        result = append_case_comment(case_id, comment_text, author="Store Manager")
+        if "error" in result:
+            local_logger.warning("add_case_comment error from data layer: %s", result["error"])
+            return f"Sorry, I couldn't add the comment: {result['error']}"
+        # Persist the updated active_case_id so context stays current
+        st.session_state.active_case_id = case_id
+        local_logger.info("Comment appended successfully to case %s.", case_id)
+        return f"Done — your comment has been added to {case_id}."
+    except Exception as e:
+        local_logger.exception("Unexpected error in add_case_comment: %s", e)
+        return f"An error occurred while adding the comment: {e}"
+
+
+def escalate_case(case_id: str) -> str:
+    """
+    Escalate an existing support case by incrementing its escalation counter.
+
+    Use this when the user says they want to escalate, flag urgency, or bump priority
+    on a specific case. This increments the escalations counter in the database.
+
+    Args:
+        case_id (str): The exact case ID to escalate (e.g. 'RC001024'). Use the active
+                       case from context. If unclear, ask the user which case they mean.
+
+    Returns:
+        str: A natural-language confirmation message with the new escalation count.
+    """
+    import streamlit as st
+    import logging
+
+    local_logger = logging.getLogger("chipLLM.escalate_case")
+    local_logger.info("=== TOOL CALL: escalate_case ===")
+    local_logger.info("case_id: %s", case_id)
+
+    try:
+        from mocks.servicenow import increment_escalations
+        result = increment_escalations(case_id)
+        if "error" in result:
+            local_logger.warning("escalate_case error from data layer: %s", result["error"])
+            return f"Sorry, I couldn't escalate the case: {result['error']}"
+        new_count = result.get("escalations", "?")
+        st.session_state.active_case_id = case_id
+        local_logger.info("Escalation incremented for case %s. New count: %s", case_id, new_count)
+        return f"Got it — {case_id} has been escalated. Escalation count is now {new_count}."
+    except Exception as e:
+        local_logger.exception("Unexpected error in escalate_case: %s", e)
+        return f"An error occurred while escalating the case: {e}"
+
+
 
 class ChipLLMClient:
     """
@@ -403,7 +500,7 @@ class ChipLLMClient:
             temperature=0.3,
             max_output_tokens=1024,
             top_p=0.9,
-            tools=[get_active_tickets, get_case_details],
+            tools=[get_active_tickets, get_case_details, add_case_comment, escalate_case],
             automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
         )
 
@@ -428,6 +525,10 @@ class ChipLLMClient:
                     result = get_active_tickets(**args)
                 elif tc.name == "get_case_details":
                     result = get_case_details(**args)
+                elif tc.name == "add_case_comment":
+                    result = add_case_comment(**args)
+                elif tc.name == "escalate_case":
+                    result = escalate_case(**args)
                 else:
                     result = {"error": f"Unknown tool: {tc.name}"}
                 function_responses.append(

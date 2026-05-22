@@ -2230,16 +2230,17 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             
             # Create the case in Supabase/storage layer
             from mocks.servicenow import create_case, get_active_cases
+            username = st.session_state.get("ticket_name", "Jim Halpert")
             create_case({
                 "id": inc_num,
                 "store_id": active_store,
-                "summary": short_desc,
+                "summary": full_description_dump,
                 "status": "New",
                 "comments": [
                     {
                         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                         "author": "System",
-                        "text": f"Incident open. Description: {short_desc}"
+                        "text": f"Case opened by Mobie from user {username}"
                     }
                 ]
             })

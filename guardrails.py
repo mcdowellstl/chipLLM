@@ -229,44 +229,54 @@ def is_cafe_issue(user_message: str) -> bool:
 def is_ticket_status_lookup_intent(text: str) -> bool:
     """
     Checks if the user's message is asking about existing ticket statuses, open cases,
-    or recent store issues, rather than asking to create/open a new ticket.
+    or recent store issues — OR is a case mutation action (add comment, escalate a case).
+    Either way these must bypass the triage escalation flow.
     """
     import re
     if not text:
         return False
     lower_text = text.strip().lower()
-    
+
+    # 0. Case mutation intents — treat exactly like a lookup to bypass triage routing
+    mutation_phrases = [
+        "add comment", "add a comment", "add note", "add a note",
+        "log a comment", "log comment", "log note", "log a note",
+        "escalate case", "escalate the case", "escalate rc",
+        "escalate ticket", "escalate this",
+    ]
+    if any(phrase in lower_text for phrase in mutation_phrases):
+        return True
+    # Bare "escalate" with no device/issue context is a case mutation intent
+    if re.search(r'^escalate$', lower_text.strip()):
+        return True
+
     # 1. Broad standalone keywords check: status, tickets, cases, incidents, incident, ticket, case, history
     keywords = ["status", "tickets", "cases", "incidents", "incident", "ticket", "case", "history"]
     has_kw = any(re.search(r"\b" + re.escape(kw) + r"\b", lower_text) for kw in keywords)
-    
+
     # 2. Check standard ticket ID patterns like RC001024 or INC12345
     has_id = bool(re.search(r"\b(?:inc|rc00|rc)[-_]?\d+\b", lower_text))
-    
-    # 3. Check for ticket challenge or empty list follow-up phrases (e.g., "both not true", "i dont see anything")
+
+    # 3. Check for ticket challenge or empty list follow-up phrases
     challenge_phrases = [
-        "both not true", "not true", "incorrect", "that's incorrect", "that is incorrect", 
-        "i dont see", "i don't see", "not showing", "where are they", "refresh", "reload", 
+        "both not true", "not true", "incorrect", "that's incorrect", "that is incorrect",
+        "i dont see", "i don't see", "not showing", "where are they", "refresh", "reload",
         "empty", "missing", "wrong count", "wrong statistic", "wrong stats", "lies", "hallucination",
         "hallucinating", "that is wrong", "thats wrong"
     ]
     has_challenge = any(phrase in lower_text for phrase in challenge_phrases)
-    
+
     if not has_kw and not has_id and not has_challenge:
         return False
-        
+
     # We found a ticket keyword or ID.
     # Now check if this is explicitly a ticket/case/incident creation intent:
-    # e.g., "open a ticket", "create a case", "submit incident", "raise a ticket", etc.
-    # Note: Plural nouns (tickets, cases, incidents) indicate lookup, not creation!
     creation_pattern = r"\b(open|create|submit|raise|file|make)\s+(?:a\s+|an\s+|new\s+)*(ticket|case|incident)\b"
     if re.search(creation_pattern, lower_text):
-        # Even with a creation pattern, if it has lookup words like "status", "check", "list", "show", "track", "history", "view",
-        # then it is still a lookup! For example: "show the status of the new ticket I opened"
         if any(w in lower_text for w in ["status", "check", "list", "show", "track", "history", "view"]):
             return True
         return False
-        
+
     # Any other mention of ticket/case/status/incidents is a lookup/view attempt!
     return True
 

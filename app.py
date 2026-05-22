@@ -1651,7 +1651,7 @@ def _reformat_case_detail_view(content: str) -> str:
         "you can update status, escalate, or add a comment to this case",
     }
     _CANONICAL_CLOSING = (
-        "You can update status, escalate, or add a comment to this case.\n"
+        "You can update status, escalate, or add a comment to this case.\n\n"
         "What would you like to do next?"
     )
 

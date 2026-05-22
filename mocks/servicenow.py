@@ -38,6 +38,8 @@ MOCK_DATABASE = {
             "store_id": "67067",
             "summary": "Kiosk 3 Cash Acceptor Jammed",
             "status": "Assigned to Field Tech",
+            "category": "hardware",
+            "subcategory": "kiosk",
             "comments": [
                 {"timestamp": "2026-05-21 10:15:00", "author": "System", "text": "Incident opened automatically by device heartbeat alert."},
                 {"timestamp": "2026-05-21 11:30:00", "author": "Tech Support", "text": "Dispatching local tech John to site. ETA is 2 hours."}
@@ -49,6 +51,8 @@ MOCK_DATABASE = {
             "store_id": "67067",
             "summary": "KVS Bumpbar buttons unresponsive in kitchen Zone 1",
             "status": "In Progress",
+            "category": "hardware",
+            "subcategory": "kvs",
             "comments": [
                 {"timestamp": "2026-05-21 13:45:00", "author": "Manager Jim", "text": "Kitchen staff reports keys 3 and 4 are not registering when pressed."},
                 {"timestamp": "2026-05-21 14:00:00", "author": "Tech Support", "text": "Rebooted KVS device remotely. Issue persists."}
@@ -60,6 +64,8 @@ MOCK_DATABASE = {
             "store_id": "67067",
             "summary": "POS 2 receipt printer paper jam sensor failure",
             "status": "New",
+            "category": "hardware",
+            "subcategory": "printer",
             "comments": [
                 {"timestamp": "2026-05-21 15:10:00", "author": "System", "text": "Jam detected in sensor corridor. User cleared jam but sensor remains flagged red."}
             ],
@@ -72,6 +78,8 @@ MOCK_DATABASE = {
             "store_id": "67068",
             "summary": "AC unit in dining area blowing warm air",
             "status": "Open",
+            "category": "hardware",
+            "subcategory": "bos",
             "comments": [],
             "created_at": "2026-05-21 16:00:00"
         }
@@ -117,6 +125,15 @@ def _normalize_case_for_app(case: dict) -> dict:
         else:
             norm["sys_created_on"] = "2026-05-21 12:00:00"
             
+    if "category" not in norm:
+        norm["category"] = None
+    if "subcategory" not in norm:
+        norm["subcategory"] = None
+    if "sub_category" not in norm:
+        norm["sub_category"] = norm["subcategory"]
+    if "subcategory" not in norm and "sub_category" in norm:
+        norm["subcategory"] = norm["sub_category"]
+            
     return norm
 
 def get_active_cases(store_id: str) -> list[dict]:
@@ -159,7 +176,9 @@ def create_case(case_data: dict) -> dict:
         "store_id": case_data.get("store_id"),
         "summary": case_data.get("summary") or case_data.get("short_description") or "New Support Case",
         "status": case_data.get("status") or case_data.get("state") or "New",
-        "comments": case_data.get("comments") or []
+        "comments": case_data.get("comments") or [],
+        "category": case_data.get("category"),
+        "subcategory": case_data.get("subcategory") or case_data.get("sub_category")
     }
     
     if "created_at" in case_data:
@@ -209,6 +228,14 @@ def update_case(case_id: str, updates: dict) -> dict:
         
     if "comments" in updates:
         db_updates["comments"] = updates["comments"]
+        
+    if "category" in updates:
+        db_updates["category"] = updates["category"]
+        
+    if "subcategory" in updates:
+        db_updates["subcategory"] = updates["subcategory"]
+    elif "sub_category" in updates:
+        db_updates["subcategory"] = updates["sub_category"]
         
     if supabase:
         try:

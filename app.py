@@ -2264,6 +2264,8 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                 "store_id": active_store,
                 "summary": full_description_dump,
                 "status": "New",
+                "category": category,
+                "subcategory": sub_category,
                 "comments": [
                     {
                         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),

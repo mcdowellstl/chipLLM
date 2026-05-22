@@ -3057,8 +3057,16 @@ if user_input:
                 st.rerun()
 
             # --- Layer 3: Dynamic HTML RAG retrieval -------------------------------
-            logger.info("Attempting RAG retrieval for input: '%s'", user_input)
-            relevant_playbooks = retrieve_context(user_input, top_k=1)
+            user_input_lower = user_input.lower()
+            is_ticket_query = any(w in user_input_lower for w in ["ticket", "tickets", "case", "cases", "incident", "incidents", "status"])
+            
+            relevant_playbooks = []
+            if not is_ticket_query:
+                logger.info("Attempting RAG retrieval for input: '%s'", user_input)
+                relevant_playbooks = retrieve_context(user_input, top_k=1)
+            else:
+                logger.info("Ticket query detected. Skipping RAG retrieval to prevent model distraction.")
+                
             rag_context: str | None = None
             rag_title: str | None = None
 

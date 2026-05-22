@@ -204,28 +204,54 @@ def get_active_count(store_id: str) -> int:
 def create_case(case_data: dict) -> dict:
     """
     Create a new case in Supabase or local mock storage.
+
+    Schema mapping (public.cases):
+      description       TEXT NOT NULL  — full diagnostic/activity dump
+      short_description TEXT NULL      — concise AI summary
+      priority          SMALLINT NULL  — integer (1=Critical … 4=Low)
+      escalations       SMALLINT       — default 0
     """
     logger.info("=== DB WRITE START: create_case ===")
     logger.info("Input case_data: %s", case_data)
-    # Build standard dictionary for SQL cases table
+
+    def _priority_to_int(p) -> int | None:
+        """Convert 'P1'/'P2'/1/2/None to a SMALLINT-compatible int."""
+        if p is None:
+            return None
+        if isinstance(p, int):
+            return p
+        s = str(p).strip().lstrip("Pp")
+        try:
+            return int(s)
+        except ValueError:
+            return None
+
     db_data = {
         "store_id": case_data.get("store_id"),
-        "summary": case_data.get("summary") or case_data.get("short_description") or "New Support Case",
+        # 'description' = full activity/diagnostic dump (NOT NULL in schema)
+        "description": (
+            case_data.get("description")
+            or case_data.get("summary")
+            or case_data.get("short_description")
+            or "New Support Case"
+        ),
+        # 'short_description' = concise AI summary (nullable)
+        "short_description": case_data.get("short_description") or case_data.get("summary"),
         "status": case_data.get("status") or case_data.get("state") or "New",
         "comments": case_data.get("comments") or [],
         "category": case_data.get("category"),
-        "subcategory": case_data.get("subcategory") or case_data.get("sub_category")
+        "subcategory": case_data.get("subcategory") or case_data.get("sub_category"),
+        "priority": _priority_to_int(case_data.get("priority")),
+        "escalations": int(case_data.get("escalations") or 0),
     }
-    
+
     if "created_at" in case_data:
         db_data["created_at"] = case_data["created_at"]
-        
+
     logger.info("Normalized DB case data to write: %s", db_data)
-        
+
     if supabase:
         try:
-            # If an explicit ID is passed (e.g. mock seeding), pass it to Supabase;
-            # otherwise let sequence-based trigger generate it.
             if "id" in case_data:
                 db_data["id"] = case_data["id"]
             logger.info("Inserting record into Supabase cases table: %s", db_data)
@@ -239,20 +265,19 @@ def create_case(case_data: dict) -> dict:
         except Exception as e:
             _log_db_exception("create_case", e)
             logger.warning("Supabase create_case failed. Falling back to mock database.")
-            
+
     # Mock fallback
     logger.info("Using mock fallback for case creation.")
     if "id" not in case_data:
-        # Mock formatting 'RC######' starting at 1027
         mock_id = f"RC00{random.randint(1027, 9999)}"
         db_data["id"] = mock_id
     else:
         db_data["id"] = case_data["id"]
-        
+
     store_id = db_data["store_id"]
     if store_id not in MOCK_DATABASE:
         MOCK_DATABASE[store_id] = []
-        
+
     MOCK_DATABASE[store_id].append(db_data)
     logger.info("Mock insert successful. Created case: %s", db_data)
     return _normalize_case_for_app(db_data)

@@ -2587,12 +2587,17 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                     full_description_dump += f"\n\n[Additional Information]\n- {extra_info}"
             else:
                 full_description_dump = "\n".join(diagnostic_dump_lines)
-                
-                # Build Short Description
-                short_desc = f"{sub_category.capitalize()} triage escalation - {st.session_state.current_triage.get('Device Type', 'Hardware issue')}"
+
+                # Build Short Description using AI summary of the conversation
+                try:
+                    _ai_client = ChipLLMClient()
+                    short_desc = _ai_client.generate_issue_description(st.session_state.messages)
+                    if not short_desc or short_desc.lower() == "unknown":
+                        short_desc = f"{sub_category.capitalize()} issue — {st.session_state.current_triage.get('Device Type', 'Hardware')}"
+                except Exception:
+                    short_desc = f"{sub_category.capitalize()} issue — {st.session_state.current_triage.get('Device Type', 'Hardware')}"
                 if len(short_desc) > 80:
                     short_desc = short_desc[:77] + "..."
-                
             # Handle photo upload conversion for ticket submission
             attachment_b64 = None
             attachment_name = None
@@ -2632,18 +2637,27 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             # Create the case in Supabase/storage layer
             from mocks.servicenow import create_case, get_active_cases
             username = st.session_state.get("ticket_name", CURRENT_USER_NAME)
+            # Map 'P1'/'P2' priority string to integer for SMALLINT column
+            _priority_str = st.session_state.current_triage.get("Priority", "P3")
+            try:
+                _priority_int = int(str(_priority_str).strip().lstrip("Pp"))
+            except (ValueError, TypeError):
+                _priority_int = 3
             create_case({
                 "id": inc_num,
                 "store_id": active_store,
-                "summary": full_description_dump,
+                "description": full_description_dump,      # full diagnostic dump → description
+                "short_description": short_desc,           # AI summary → short_description
                 "status": "New",
+                "priority": _priority_int,
+                "escalations": 0,
                 "category": category,
                 "subcategory": sub_category,
                 "comments": [
                     {
                         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                         "author": "System",
-                        "text": f"Case opened by Mobie from user {username}"
+                        "text": f"Case opened via Chip by {username}"
                     }
                 ]
             })

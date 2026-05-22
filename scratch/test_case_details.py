@@ -51,8 +51,9 @@ def test_case_detail_streaming():
 
     assert "RC001024" in output, "Missing ticket ID in detail view"
     assert "Recent Activity" in output or "Comments" in output, "Missing comments section"
-    assert "What would you like to do" in output, "Missing follow-up prompt"
+    assert "What's the plan for this issue?" in output, "Missing closing line"
     assert "| **" not in output, "Found bold category prefix formatting — forbidden!"
+    assert "(You can add" not in output, "Found forbidden parenthetical options in closing line!"
     print("\nPASS: Case detail view formatted correctly.")
 
 if __name__ == "__main__":

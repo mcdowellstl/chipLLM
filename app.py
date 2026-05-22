@@ -1260,6 +1260,11 @@ def get_choices_from_message(content: str) -> list[str]:
     import re
     content_lower = content.lower()
     
+    # 0. Case detail view — ALWAYS suppress chips/buttons entirely.
+    # The LLM renders a structured case log. No parenthetical or chip should ever fire on this.
+    if "recent activity" in content_lower or "what's the plan for this issue" in content_lower:
+        return []
+
     # 0. Case options prompt bubbles - BANNED under UI Reboot
     if "case options:" in content_lower:
         return []

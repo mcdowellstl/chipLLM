@@ -1260,6 +1260,10 @@ def get_choices_from_message(content: str) -> list[str]:
     import re
     content_lower = content.lower()
     
+    # 0. Case options prompt bubbles - BANNED under UI Reboot
+    if "case options:" in content_lower:
+        return []
+
     # 0. Sequential Triage questions — device model/serial now use embedded form, not chips
     if "completely stopping your store from taking orders or payments" in content_lower:
         return ["Yes", "No"]
@@ -1376,7 +1380,22 @@ def _colorize_ticket_tables(content: str) -> str:
     ticket_lines = []
     
     def process_ticket_block(t_lines: list[str]) -> str:
-        # 1. Find the status
+        # 1. Normalize status mapping
+        def normalize_status(status_str: str) -> str:
+            status_clean = status_str.strip().lower()
+            if "new" in status_clean:
+                return "new"
+            if "pending" in status_clean or "assign" in status_clean:
+                return "pending"
+            if "progress" in status_clean:
+                return "in progress"
+            if "confirm" in status_clean:
+                return "awaiting confirmation"
+            if "close" in status_clean:
+                return "closed"
+            return status_clean
+
+        # 2. Find the status
         raw_status = None
         for line in t_lines:
             status_match = re.search(
@@ -1387,10 +1406,34 @@ def _colorize_ticket_tables(content: str) -> str:
                 raw_status = status_match.group(1).strip().lower()
                 break
                 
-        bg = _TICKET_STATUS_COLORS.get(raw_status) if raw_status else None
-        border = _TICKET_STATUS_BORDERS.get(raw_status) if raw_status else None
+        # Look up status by Ticket ID if status is not found yet (helps colorize streaming tables instantly!)
+        if not raw_status:
+            ticket_id = None
+            for line in t_lines:
+                id_match = re.search(
+                    r'\|\s*\*{0,2}Ticket ID\*{0,2}\s*\|\s*([^|\n]+?)\s*\|',
+                    line, re.IGNORECASE
+                )
+                if id_match:
+                    ticket_id = id_match.group(1).strip()
+                    # Strip markdown bold, spaces, or brackets if any
+                    ticket_id = re.sub(r'[\*\`\[\]\s]', '', ticket_id)
+                    break
+            
+            if ticket_id:
+                active_tickets = st.session_state.get("active_tickets", [])
+                for t in active_tickets:
+                    t_id_clean = re.sub(r'[^A-Z0-9]', '', t.get("id", "").upper())
+                    target_id_clean = re.sub(r'[^A-Z0-9]', '', ticket_id.upper())
+                    if t_id_clean == target_id_clean:
+                        raw_status = (t.get("status") or t.get("state") or "").strip().lower()
+                        break
+                        
+        norm_status = normalize_status(raw_status) if raw_status else None
+        bg = _TICKET_STATUS_COLORS.get(norm_status) if norm_status else "var(--bg-card)"
+        border = _TICKET_STATUS_BORDERS.get(norm_status) if norm_status else "var(--border)"
         
-        # 2. Parse and normalize rows
+        # 3. Parse and normalize rows
         normalized_rows = []
         current_cells = []
         
@@ -1443,20 +1486,16 @@ def _colorize_ticket_tables(content: str) -> str:
             key_clean = clean_cell(key)
             val_clean = clean_cell(val)
             
-            is_header = row_idx == 0 and key_clean.lower() == "field"
+            # Robust removal of [Field | Value] headers with absolute reliability
+            is_header = (
+                key_clean.strip().lower() in ("field", "field name") or 
+                val_clean.strip().lower() in ("value", "value name") or
+                ("field" in key_clean.lower() and "value" in val_clean.lower())
+            )
+            if is_header:
+                continue
             
             cells_html = (
-                f'<th style="padding:8px 12px; text-align:left; '
-                f'border-bottom:1.5px solid rgba(255,255,255,0.12); '
-                f'font-weight:700; font-size:11.5px; text-transform:uppercase; letter-spacing:0.8px; color:#aab;">'
-                f'{key_clean}'
-                f'</th>'
-                f'<th style="padding:8px 12px; text-align:left; '
-                f'border-bottom:1.5px solid rgba(255,255,255,0.12); '
-                f'font-weight:700; font-size:11.5px; text-transform:uppercase; letter-spacing:0.8px; color:#aab;">'
-                f'{val_clean}'
-                f'</th>'
-            ) if is_header else (
                 f'<td style="padding:8px 12px; border-bottom:1px solid rgba(255,255,255,0.06); '
                 f'font-weight:600; font-size:12.5px; color:#8892a4; vertical-align:top; width:25%;">'
                 f'{key_clean}'
@@ -1468,6 +1507,9 @@ def _colorize_ticket_tables(content: str) -> str:
             )
             html_rows.append(f'<tr>{cells_html}</tr>')
             
+        if not html_rows:
+            return ""
+            
         html_table = (
             f'<table style="width:100%; border-collapse:collapse; '
             f'font-family:inherit;">'
@@ -1475,16 +1517,14 @@ def _colorize_ticket_tables(content: str) -> str:
             + '</table>'
         )
         
-        if bg and border:
-            return (
-                f'<div style="background:{bg}; border:1px solid {border}; '
-                f'border-left:4px solid {border}; border-radius:10px; '
-                f'padding:14px 16px; margin:14px 0;">'
-                f'{html_table}'
-                f'</div>'
-            )
-        else:
-            return html_table
+        # Always wrap in a card to prevent flashing from un-styled black text tables while streaming
+        return (
+            f'<div style="background:{bg}; border:1px solid {border}; '
+            f'border-left:4px solid {border}; border-radius:10px; '
+            f'padding:14px 16px; margin:14px 0;">'
+            f'{html_table}'
+            f'</div>'
+        )
 
     idx = 0
     while idx < len(lines):
@@ -1505,7 +1545,12 @@ def _colorize_ticket_tables(content: str) -> str:
         if in_ticket:
             stop_ticket = False
             
-            if is_table_header:
+            is_new_table_header = (
+                line_stripped.startswith('|') and 
+                "field" in line_stripped.lower()
+            )
+            
+            if is_new_table_header:
                 stop_ticket = True
             elif "there are also" in line_stripped.lower() and "closed" in line_stripped.lower():
                 stop_ticket = True
@@ -1519,10 +1564,33 @@ def _colorize_ticket_tables(content: str) -> str:
                     peek_idx += 1
                     
                 if next_non_empty:
+                    # Always stop if a new ticket table is starting
                     if next_non_empty.startswith('|') and ("field" in next_non_empty.lower() or "ticket id" in next_non_empty.lower()):
                         stop_ticket = True
-                    elif not next_non_empty.startswith('|') and not next_non_empty.startswith('•') and not next_non_empty.startswith('*') and not next_non_empty.startswith('-'):
-                        stop_ticket = True
+                    else:
+                        # Find the last field name in the ticket lines we have collected so far
+                        last_field = None
+                        for t_line in reversed(ticket_lines):
+                            t_line_stripped = t_line.strip()
+                            if t_line_stripped.startswith('|'):
+                                if re.fullmatch(r'[\|\s\-\:]+', t_line_stripped):
+                                    continue
+                                raw_parts = [p.strip() for p in t_line_stripped.split('|')]
+                                if raw_parts and raw_parts[0] == '':
+                                    raw_parts = raw_parts[1:]
+                                if raw_parts and raw_parts[-1] == '':
+                                    raw_parts = raw_parts[:-1]
+                                if raw_parts:
+                                    last_field = raw_parts[0]
+                                    break
+                        
+                        # If we have parsed any rows, stop if the next content is plain conversational text (not a table row or a list bullet)
+                        if last_field:
+                            if not next_non_empty.startswith('|') and not next_non_empty.startswith('•') and not next_non_empty.startswith('*') and not next_non_empty.startswith('-'):
+                                stop_ticket = True
+                        # If we do not have any active row yet, default to safety
+                        else:
+                            stop_ticket = True
                 else:
                     stop_ticket = True
                     
@@ -3059,8 +3127,12 @@ if _show_chips:
             for idx, (col, choice) in enumerate(zip(cols, choices)):
                 with col:
                     if st.button(choice, key=f"chip_{choice}_{idx}", use_container_width=True):
-                        st.session_state.suggestion_click = choice
-                        st.rerun()
+                        if choice in ["See Details", "Add Comment", "Modify Status", "Escalate", "None"]:
+                            # Don't do anything for now
+                            pass
+                        else:
+                            st.session_state.suggestion_click = choice
+                            st.rerun()
 
 # ---------------------------------------------------------------------------
 # Chat input
@@ -3297,8 +3369,7 @@ if user_input:
                 st.rerun()
 
             # --- Layer 3: Dynamic HTML RAG retrieval -------------------------------
-            user_input_lower = user_input.lower()
-            is_ticket_query = any(w in user_input_lower for w in ["ticket", "tickets", "case", "cases", "incident", "incidents", "status"])
+            is_ticket_query = is_ticket_status_lookup_intent(user_input)
             
             relevant_playbooks = []
             if not is_ticket_query:
@@ -3354,9 +3425,11 @@ if user_input:
                     system_instruction=sys_inst,
                 ):
                     full_response += chunk
-                    response_placeholder.markdown(f"{full_response}▌")
+                    cleaned_chunk = clean_assistant_message(full_response)
+                    response_placeholder.markdown(f"{cleaned_chunk}▌", unsafe_allow_html=True)
 
-                response_placeholder.markdown(full_response)
+                cleaned_final = clean_assistant_message(full_response)
+                response_placeholder.markdown(cleaned_final, unsafe_allow_html=True)
                 logger.info("Completed Gemini API streaming response. Response length: %d chars", len(full_response))
 
             except Exception as exc:

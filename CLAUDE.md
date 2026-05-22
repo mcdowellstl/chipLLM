@@ -236,6 +236,7 @@ Cloud Run:   Workload Identity — service account attached to the Cloud Run rev
 | Use `GOOGLE_API_KEY` or a service account JSON key path | Use ADC — `gcloud auth application-default login` |
 | Create a second `genai.Client()` anywhere in the codebase | Call `get_genai_client()` from `llm_client.py` — it is the single source of truth |
 | Store `llm_client` in `st.session_state` | The client is managed by `@st.cache_resource`; instantiate `ChipLLMClient()` inline |
+| Push code to remote Git repository or run "git push" | Always keep changes purely local and let the user commit and push manually (pushes trigger expensive GCP Cloud Builds) |
 
 ---
 
@@ -254,5 +255,6 @@ These are the **right** way to grow the system without breaking it:
 
 ---
 
-*Last updated: 2026-05-20 by chipLLM Lead Architect*
+*Last updated: 2026-05-22 by chipLLM Lead Architect & AI Partner*
 *Any agent modifying rules in this file must leave a dated comment explaining the change.*
+- **2026-05-22**: Added strict prohibition on `git push` command executions to avoid triggering costly GCP Cloud Builds.

@@ -243,7 +243,16 @@ def is_ticket_status_lookup_intent(text: str) -> bool:
     # 2. Check standard ticket ID patterns like RC001024 or INC12345
     has_id = bool(re.search(r"\b(?:inc|rc00|rc)[-_]?\d+\b", lower_text))
     
-    if not has_kw and not has_id:
+    # 3. Check for ticket challenge or empty list follow-up phrases (e.g., "both not true", "i dont see anything")
+    challenge_phrases = [
+        "both not true", "not true", "incorrect", "that's incorrect", "that is incorrect", 
+        "i dont see", "i don't see", "not showing", "where are they", "refresh", "reload", 
+        "empty", "missing", "wrong count", "wrong statistic", "wrong stats", "lies", "hallucination",
+        "hallucinating", "that is wrong", "thats wrong"
+    ]
+    has_challenge = any(phrase in lower_text for phrase in challenge_phrases)
+    
+    if not has_kw and not has_id and not has_challenge:
         return False
         
     # We found a ticket keyword or ID.

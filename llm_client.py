@@ -161,68 +161,98 @@ def get_active_tickets(status_filter: str = "open") -> dict:
             - 'closed_last_30_days' (int): The count of tickets closed in the last 30 days.
     """
     import streamlit as st
+    import logging
     from datetime import datetime, timezone, timedelta
 
-    all_tickets = st.session_state.get("active_tickets", [])
+    local_logger = logging.getLogger("chipLLM.get_active_tickets")
+    active_store = st.session_state.get("active_store", "Unknown")
     
-    def parse_date(date_val) -> datetime | None:
-        if not date_val:
-            return None
-        if isinstance(date_val, datetime):
-            dt = date_val
-        elif isinstance(date_val, str):
-            date_str = date_val.strip()
-            try:
-                if date_str.endswith("Z"):
-                    dt = datetime.fromisoformat(date_str[:-1]).replace(tzinfo=timezone.utc)
-                else:
-                    dt = datetime.fromisoformat(date_str)
-            except Exception:
+    local_logger.info("=== DB CALL: get_active_tickets ===")
+    local_logger.info("status_filter: %s, active_store: %s", status_filter, active_store)
+
+    try:
+        all_tickets = st.session_state.get("active_tickets", [])
+        if all_tickets is None:
+            all_tickets = []
+        local_logger.info("Total tickets currently in st.session_state.active_tickets: %d", len(all_tickets))
+        
+        def parse_date(date_val) -> datetime | None:
+            if not date_val:
+                return None
+            if isinstance(date_val, datetime):
+                dt = date_val
+            elif isinstance(date_val, str):
+                date_str = date_val.strip()
                 try:
-                    dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                    if date_str.endswith("Z"):
+                        dt = datetime.fromisoformat(date_str[:-1]).replace(tzinfo=timezone.utc)
+                    else:
+                        dt = datetime.fromisoformat(date_str)
                 except Exception:
                     try:
-                        dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
+                        dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
                     except Exception:
-                        return None
-        else:
-            return None
+                        try:
+                            dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%S")
+                        except Exception:
+                            return None
+            else:
+                return None
 
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        else:
-            dt = dt.astimezone(timezone.utc)
-        return dt
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = dt.astimezone(timezone.utc)
+            return dt
 
-    now = datetime.now(timezone.utc)
-    thirty_days_ago = now - timedelta(days=30)
-    
-    closed_last_30_days = 0
-    filtered_tickets = []
-    
-    for t in all_tickets:
-        status = t.get("status") or t.get("state") or ""
-        is_closed = isinstance(status, str) and status.strip().lower() == "closed"
+        now = datetime.now(timezone.utc)
+        thirty_days_ago = now - timedelta(days=30)
         
-        # Calculate closed in last 30 days
-        if is_closed:
-            created_val = t.get("created_at") or t.get("sys_created_on")
-            dt = parse_date(created_val)
-            if dt and dt >= thirty_days_ago:
-                closed_last_30_days += 1
-                
-        # Filter tickets
-        if status_filter == "closed" and is_closed:
-            filtered_tickets.append(t)
-        elif status_filter == "open" and not is_closed:
-            filtered_tickets.append(t)
-        elif status_filter == "all":
-            filtered_tickets.append(t)
+        closed_last_30_days = 0
+        filtered_tickets = []
+        
+        for i, t in enumerate(all_tickets):
+            if not isinstance(t, dict):
+                continue
+            status = t.get("status") or t.get("state") or ""
+            is_closed = isinstance(status, str) and status.strip().lower() == "closed"
             
-    return {
-        "tickets": filtered_tickets,
-        "closed_last_30_days": closed_last_30_days
-    }
+            # Calculate closed in last 30 days
+            if is_closed:
+                created_val = t.get("created_at") or t.get("sys_created_on")
+                dt = parse_date(created_val)
+                if dt and dt >= thirty_days_ago:
+                    closed_last_30_days += 1
+                    
+            # Filter tickets
+            matched = False
+            if status_filter == "closed" and is_closed:
+                filtered_tickets.append(t)
+                matched = True
+            elif status_filter == "open" and not is_closed:
+                filtered_tickets.append(t)
+                matched = True
+            elif status_filter == "all":
+                filtered_tickets.append(t)
+                matched = True
+                
+            local_logger.info("  Ticket %d: ID=%s | status=%s | category=%s | subcategory=%s | matched_filter=%s",
+                              i, t.get("id"), status, t.get("category"), t.get("subcategory"), matched)
+                
+        local_logger.info("Filtered results count: %d tickets", len(filtered_tickets))
+        local_logger.info("Closed tickets in last 30 days: %d", closed_last_30_days)
+        local_logger.info("=== END DB CALL ===")
+        
+        return {
+            "tickets": filtered_tickets,
+            "closed_last_30_days": closed_last_30_days
+        }
+    except Exception as e:
+        local_logger.exception("Unexpected error in get_active_tickets tool execution: %s", e)
+        return {
+            "tickets": [],
+            "closed_last_30_days": 0
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +325,7 @@ class ChipLLMClient:
             max_output_tokens=1024,
             top_p=0.9,
             tools=[get_active_tickets],
+            automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
         )
 
         response_stream = self._client.models.generate_content_stream(

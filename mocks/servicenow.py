@@ -136,41 +136,77 @@ def _normalize_case_for_app(case: dict) -> dict:
             
     return norm
 
+def _log_db_exception(func_name: str, e: Exception) -> None:
+    """Helper to log detailed exception attributes for Supabase/Postgrest errors."""
+    logger.error("DB Exception in %s: type=%s, str=%s", func_name, type(e).__name__, str(e))
+    for attr in ["message", "code", "details", "hint", "status"]:
+        if hasattr(e, attr):
+            logger.error("  Attribute %s: %s", attr, getattr(e, attr))
+    if hasattr(e, "__dict__") and e.__dict__:
+        try:
+            logger.error("  Exception dict: %s", e.__dict__)
+        except Exception:
+            pass
+    logger.exception("Full traceback for database operation failure in %s:", func_name)
+
 def get_active_cases(store_id: str) -> list[dict]:
     """
     Get active incident cases for a given store_id.
     """
+    logger.info("=== DB QUERY START: get_active_cases ===")
+    logger.info("store_id: %s, Supabase client enabled: %s", store_id, supabase is not None)
     if supabase:
         try:
+            logger.info("Executing Supabase select on cases table for store_id: %s", store_id)
             response = supabase.table("cases").select("*").eq("store_id", store_id).order("created_at", desc=False).execute()
             cases = response.data or []
+            logger.info("Supabase query successful. Returned %d cases.", len(cases))
+            for i, c in enumerate(cases):
+                logger.info("  Supabase case %d: ID=%s, Summary=%s, Status=%s, CreatedAt=%s",
+                            i, c.get("id"), c.get("summary"), c.get("status"), c.get("created_at"))
             return [_normalize_case_for_app(c) for c in cases]
         except Exception as e:
-            logger.exception("Failed to query cases from Supabase, falling back to mock: %s", e)
+            _log_db_exception("get_active_cases", e)
+            logger.warning("Supabase select failed. Falling back to mock database.")
             
     # Mock fallback
+    logger.info("Using mock fallback database for store_id: %s", store_id)
     cases = MOCK_DATABASE.get(store_id, [])
+    logger.info("Mock database returned %d cases.", len(cases))
+    for i, c in enumerate(cases):
+        logger.info("  Mock case %d: ID=%s, Summary=%s, Status=%s, CreatedAt=%s",
+                    i, c.get("id"), c.get("summary"), c.get("status"), c.get("created_at"))
     return [_normalize_case_for_app(c) for c in cases]
 
 def get_active_count(store_id: str) -> int:
     """
     Get the count of active cases for a given store_id.
     """
+    logger.info("=== DB QUERY START: get_active_count ===")
+    logger.info("store_id: %s, Supabase client enabled: %s", store_id, supabase is not None)
     if supabase:
         try:
             response = supabase.table("cases").select("*", count="exact").eq("store_id", store_id).execute()
             if response.count is not None:
+                logger.info("Supabase count exact returned: %d", response.count)
                 return response.count
-            return len(response.data or [])
+            cnt = len(response.data or [])
+            logger.info("Supabase fallback list count returned: %d", cnt)
+            return cnt
         except Exception as e:
-            logger.exception("Failed to get case count from Supabase, falling back to mock: %s", e)
+            _log_db_exception("get_active_count", e)
+            logger.warning("Supabase count failed. Falling back to mock database count.")
             
-    return len(MOCK_DATABASE.get(store_id, []))
+    cnt = len(MOCK_DATABASE.get(store_id, []))
+    logger.info("Mock count returned: %d", cnt)
+    return cnt
 
 def create_case(case_data: dict) -> dict:
     """
     Create a new case in Supabase or local mock storage.
     """
+    logger.info("=== DB WRITE START: create_case ===")
+    logger.info("Input case_data: %s", case_data)
     # Build standard dictionary for SQL cases table
     db_data = {
         "store_id": case_data.get("store_id"),
@@ -184,19 +220,28 @@ def create_case(case_data: dict) -> dict:
     if "created_at" in case_data:
         db_data["created_at"] = case_data["created_at"]
         
+    logger.info("Normalized DB case data to write: %s", db_data)
+        
     if supabase:
         try:
             # If an explicit ID is passed (e.g. mock seeding), pass it to Supabase;
             # otherwise let sequence-based trigger generate it.
             if "id" in case_data:
                 db_data["id"] = case_data["id"]
+            logger.info("Inserting record into Supabase cases table: %s", db_data)
             response = supabase.table("cases").insert(db_data).execute()
             if response.data:
-                return _normalize_case_for_app(response.data[0])
+                res = response.data[0]
+                logger.info("Supabase insert successful. Created case in Supabase: %s", res)
+                return _normalize_case_for_app(res)
+            else:
+                logger.warning("Supabase insert response returned empty data.")
         except Exception as e:
-            logger.exception("Failed to create case in Supabase, falling back to mock: %s", e)
+            _log_db_exception("create_case", e)
+            logger.warning("Supabase create_case failed. Falling back to mock database.")
             
     # Mock fallback
+    logger.info("Using mock fallback for case creation.")
     if "id" not in case_data:
         # Mock formatting 'RC######' starting at 1027
         mock_id = f"RC00{random.randint(1027, 9999)}"
@@ -209,12 +254,15 @@ def create_case(case_data: dict) -> dict:
         MOCK_DATABASE[store_id] = []
         
     MOCK_DATABASE[store_id].append(db_data)
+    logger.info("Mock insert successful. Created case: %s", db_data)
     return _normalize_case_for_app(db_data)
 
 def update_case(case_id: str, updates: dict) -> dict:
     """
     Update an existing case in Supabase or local mock storage by ID.
     """
+    logger.info("=== DB WRITE START: update_case ===")
+    logger.info("case_id: %s, updates: %s", case_id, updates)
     db_updates = {}
     if "summary" in updates:
         db_updates["summary"] = updates["summary"]
@@ -237,21 +285,32 @@ def update_case(case_id: str, updates: dict) -> dict:
     elif "sub_category" in updates:
         db_updates["subcategory"] = updates["sub_category"]
         
+    logger.info("Normalized DB updates: %s", db_updates)
+        
     if supabase:
         try:
+            logger.info("Executing Supabase update on cases table for case_id: %s with updates: %s", case_id, db_updates)
             response = supabase.table("cases").update(db_updates).eq("id", case_id).execute()
             if response.data:
-                return _normalize_case_for_app(response.data[0])
+                res = response.data[0]
+                logger.info("Supabase update successful. Updated case in Supabase: %s", res)
+                return _normalize_case_for_app(res)
+            else:
+                logger.warning("Supabase update response returned empty data.")
         except Exception as e:
-            logger.exception("Failed to update case in Supabase, falling back to mock: %s", e)
+            _log_db_exception("update_case", e)
+            logger.warning("Supabase update_case failed. Falling back to mock database.")
             
     # Mock fallback
+    logger.info("Using mock fallback for case update.")
     for store_id, cases in MOCK_DATABASE.items():
         for case in cases:
             if case.get("id") == case_id:
                 case.update(db_updates)
+                logger.info("Mock update successful. Updated case: %s", case)
                 return _normalize_case_for_app(case)
                 
+    logger.warning("Case %s not found in mock database.", case_id)
     return {}
 
 def get_store_tickets(store_id: str) -> list[dict]:

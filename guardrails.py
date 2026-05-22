@@ -236,26 +236,29 @@ def is_ticket_status_lookup_intent(text: str) -> bool:
         return False
     lower_text = text.strip().lower()
     
-    # If a specific ticket ID is mentioned, it's definitely a lookup/status check
-    if re.search(r"\b(?:inc|rc00|rc)[-_]?\d+\b", lower_text):
-        return True
-        
-    # Flexible check for recent ticket inquiries
-    if "recent" in lower_text and any(w in lower_text for w in ["issue", "ticket", "case"]):
-        return True
-        
-    # Phrases indicating lookup/inquiry about existing tickets/cases
-    lookup_keywords = [
-        "active tickets", "open tickets", "my tickets", "store tickets", "existing tickets",
-        "active cases", "open cases", "my cases", "store cases", "existing cases",
-        "ticket status", "case status", "status of my", "status of the", "status of inc", "status of rc", "status of rc00",
-        "check status", "check ticket", "check case", "any tickets", "any cases",
-        "list tickets", "list cases", "show tickets", "show cases", "recent issues",
-        "recent tickets", "recent cases", "view tickets", "view cases", "what tickets",
-        "what cases", "current tickets", "current cases", "outstanding tickets",
-        "outstanding cases", "status check"
-    ]
+    # 1. Broad standalone keywords check: status, tickets, cases, incidents, incident, ticket, case, history
+    keywords = ["status", "tickets", "cases", "incidents", "incident", "ticket", "case", "history"]
+    has_kw = any(re.search(r"\b" + re.escape(kw) + r"\b", lower_text) for kw in keywords)
     
-    return any(kw in lower_text for kw in lookup_keywords)
+    # 2. Check standard ticket ID patterns like RC001024 or INC12345
+    has_id = bool(re.search(r"\b(?:inc|rc00|rc)[-_]?\d+\b", lower_text))
+    
+    if not has_kw and not has_id:
+        return False
+        
+    # We found a ticket keyword or ID.
+    # Now check if this is explicitly a ticket/case/incident creation intent:
+    # e.g., "open a ticket", "create a case", "submit incident", "raise a ticket", etc.
+    # Note: Plural nouns (tickets, cases, incidents) indicate lookup, not creation!
+    creation_pattern = r"\b(open|create|submit|raise|file|make)\s+(?:a\s+|an\s+|new\s+)*(ticket|case|incident)\b"
+    if re.search(creation_pattern, lower_text):
+        # Even with a creation pattern, if it has lookup words like "status", "check", "list", "show", "track", "history", "view",
+        # then it is still a lookup! For example: "show the status of the new ticket I opened"
+        if any(w in lower_text for w in ["status", "check", "list", "show", "track", "history", "view"]):
+            return True
+        return False
+        
+    # Any other mention of ticket/case/status/incidents is a lookup/view attempt!
+    return True
 
 

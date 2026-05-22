@@ -1369,32 +1369,68 @@ def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
             )
             content = pattern.sub(replacement, content)
 
-    # 1.5 Intercept escalation/exhausted steps and insert Ticket Impact Assessment banner
-    # immediately after it, completely removing the "Entering Ticket Creation Flow" banner.
-    exhausted_phrases = [
-        "exhausted the initial troubleshooting steps",
-        "exhausted the common troubleshooting steps",
-        "troubleshooting steps didn't resolve the issue",
-        "troubleshooting steps did not resolve the issue",
-        "did not resolve the issue, we need to escalate",
-        "didn't resolve the issue, we need to escalate",
-        "need to ask a few questions to assess the priority",
-        "assess the priority of this issue",
-        "how many kiosks are currently affected",
-        "how many pos are currently affected",
-        "how many devices are currently affected",
-    ]
-    
-    has_inserted_impact_banner = False
-    
-    for phrase in exhausted_phrases:
-        if phrase in content.lower():
-            # Find the sentence containing this phrase
-            import re as _re
-            match = _re.search(rf'([^.!?\n]*{_re.escape(phrase)}[^.!?\n]*[.!?]?)', content, _re.IGNORECASE)
-            if match:
-                sentence = match.group(1)
-                banner = (
+    # Check if the user's intent is ticket status lookup. If so, completely exempt from Ticket Impact Assessment banner injection.
+    is_lookup = False
+    if "messages" in st.session_state and st.session_state.messages:
+        for msg in reversed(st.session_state.messages):
+            if msg.get("role") == "user":
+                if is_ticket_status_lookup_intent(msg.get("content", "")):
+                    is_lookup = True
+                break
+
+    if not is_lookup:
+        # 1.5 Intercept escalation/exhausted steps and insert Ticket Impact Assessment banner
+        # immediately after it, completely removing the "Entering Ticket Creation Flow" banner.
+        exhausted_phrases = [
+            "exhausted the initial troubleshooting steps",
+            "exhausted the common troubleshooting steps",
+            "troubleshooting steps didn't resolve the issue",
+            "troubleshooting steps did not resolve the issue",
+            "did not resolve the issue, we need to escalate",
+            "didn't resolve the issue, we need to escalate",
+            "need to ask a few questions to assess the priority",
+            "assess the priority of this issue",
+            "how many kiosks are currently affected",
+            "how many pos are currently affected",
+            "how many devices are currently affected",
+        ]
+        
+        has_inserted_impact_banner = False
+        
+        for phrase in exhausted_phrases:
+            if phrase in content.lower():
+                # Find the sentence containing this phrase
+                import re as _re
+                match = _re.search(rf'([^.!?\n]*{_re.escape(phrase)}[^.!?\n]*[.!?]?)', content, _re.IGNORECASE)
+                if match:
+                    sentence = match.group(1)
+                    banner = (
+                        '<div style="background: rgba(255, 199, 44, 0.12); border: 1.5px solid #ffc72c; '
+                        'border-left: 5px solid #da291c; padding: 14px 18px; border-radius: 8px; margin: 12px 0; '
+                        'font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
+                        '📊 <b>Ticket Impact Assessment</b><br/>'
+                        "To help determine priority for this ticket, let's dig in on impact."
+                        '</div>'
+                    )
+                    # Replace the sentence with the banner followed by the sentence
+                    content = content.replace(sentence, banner + "\n\n" + sentence, 1)
+                    has_inserted_impact_banner = True
+                    break
+
+        # 1.6 Intercept priority/impact notice and put inside a colored box if not already shown
+        priority_text = "To help determine priority for this ticket, let's dig in on impact"
+        if priority_text.lower() in content.lower():
+            # The device_form step is completely after the priority check, so they haven't seen the banner yet
+            already_shown_in_prev_turn = False
+            
+            if has_inserted_impact_banner or already_shown_in_prev_turn:
+                # Strip the redundant plain text/phrase of priority_text
+                pattern = re.compile(r'To help determine priority for this ticket, let\'s dig in on impact\.?\s*', re.IGNORECASE)
+                content = pattern.sub("", content)
+            else:
+                # Otherwise show the premium McDonald's branded banner
+                pattern = re.compile(re.escape(priority_text) + r"\.?", re.IGNORECASE)
+                replacement = (
                     '<div style="background: rgba(255, 199, 44, 0.12); border: 1.5px solid #ffc72c; '
                     'border-left: 5px solid #da291c; padding: 14px 18px; border-radius: 8px; margin: 12px 0; '
                     'font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
@@ -1402,33 +1438,7 @@ def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
                     "To help determine priority for this ticket, let's dig in on impact."
                     '</div>'
                 )
-                # Replace the sentence with the banner followed by the sentence
-                content = content.replace(sentence, banner + "\n\n" + sentence, 1)
-                has_inserted_impact_banner = True
-                break
-
-    # 1.6 Intercept priority/impact notice and put inside a colored box if not already shown
-    priority_text = "To help determine priority for this ticket, let's dig in on impact"
-    if priority_text.lower() in content.lower():
-        # The device_form step is completely after the priority check, so they haven't seen the banner yet
-        already_shown_in_prev_turn = False
-        
-        if has_inserted_impact_banner or already_shown_in_prev_turn:
-            # Strip the redundant plain text/phrase of priority_text
-            pattern = re.compile(r'To help determine priority for this ticket, let\'s dig in on impact\.?\s*', re.IGNORECASE)
-            content = pattern.sub("", content)
-        else:
-            # Otherwise show the premium McDonald's branded banner
-            pattern = re.compile(re.escape(priority_text) + r"\.?", re.IGNORECASE)
-            replacement = (
-                '<div style="background: rgba(255, 199, 44, 0.12); border: 1.5px solid #ffc72c; '
-                'border-left: 5px solid #da291c; padding: 14px 18px; border-radius: 8px; margin: 12px 0; '
-                'font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
-                '📊 <b>Ticket Impact Assessment</b><br/>'
-                "To help determine priority for this ticket, let's dig in on impact."
-                '</div>'
-            )
-            content = pattern.sub(replacement, content)
+                content = pattern.sub(replacement, content)
 
     # Prevent duplicate cleanups if suffix is already present
     if any(suffix in content for suffix in [
@@ -2857,13 +2867,20 @@ if user_input:
     ts_now = time.strftime("%H:%M")
     lower_input = user_input.lower()
     
+    # Force bypass of triage, ticket collection, and escalation if user is checking ticket/case status
+    if is_ticket_status_lookup_intent(user_input):
+        logger.info("Ticket status lookup intent detected. Resetting all triage, escalation, and ticket collection states to bypass Priority/Escalation forms.")
+        reset_triage_state()
+        st.session_state.ticket_collection_active = False
+        st.session_state.manual_ticket_flow = False
+
     # Detect cafe issues and route immediately to live human agent
     if is_cafe_issue(user_input) and not st.session_state.get("escalated", False):
         logger.info("Cafe issue detected: %s. Routing to live human agent.", user_input)
         trigger_live_agent_flow(user_input)
 
     # Global human agent escalation interceptor
-    if check_escalation_intent(user_input):
+    if check_escalation_intent(user_input) and not is_ticket_status_lookup_intent(user_input):
         trigger_live_agent_flow(user_input)
     
     # Intercept comment updates
@@ -2966,7 +2983,7 @@ if user_input:
             st.rerun()
         
     # Intercept live agent keywords
-    elif check_escalation_intent(user_input):
+    elif check_escalation_intent(user_input) and not is_ticket_status_lookup_intent(user_input):
         trigger_live_agent_flow(user_input)
         
     # Intercept no-match stopper choices
@@ -3144,10 +3161,17 @@ if user_input:
 
         # --- Post-response: check if response triggers escalation -------------
         if not st.session_state.ticket_collection_active and not st.session_state.get("escalation_triage_active", False):
-            if "how would you like to proceed" not in full_response.lower():
-                post_guard = check_guardrails(full_response)
-                if post_guard.escalation_triggered:
-                    start_escalation_triage(append_welcome=False)
+            # If the user's input was a ticket status lookup, NEVER auto-escalate or start priority triage forms!
+            is_lookup = is_ticket_status_lookup_intent(user_input)
+            logger.info("Post-response escalation check: user_input='%s', is_ticket_status_lookup=%s", user_input, is_lookup)
+            if not is_lookup:
+                if "how would you like to proceed" not in full_response.lower():
+                    post_guard = check_guardrails(full_response)
+                    logger.info("  post_guard.escalation_triggered=%s for full_response", post_guard.escalation_triggered)
+                    if post_guard.escalation_triggered:
+                        start_escalation_triage(append_welcome=False)
+            else:
+                logger.info("  Bypassing post-response escalation check entirely because user input is a ticket status lookup.")
 
         # If they are connected and chat turns >= 2, trigger ticket creation flow
         if is_connected_stage and st.session_state.get("live_agent_chat_turns", 0) >= 2:

@@ -704,9 +704,18 @@ def sync_triage_from_messages() -> None:
             elif "otp" in q_content:
                 summary_dict["Are you OTP or OTP cer"] = ans_clean.capitalize()
 
-    # Seed the "Issue Description" with the AI-generated description
-    if "Issue Description" not in summary_dict or summary_dict["Issue Description"] == "Unknown":
-        summary_dict["Issue Description"] = st.session_state.get("ai_issue_description", "Unknown")
+    # Seed the "Issue Description" with the raw first user message if not already captured from Q&A
+    if "Issue Description" not in summary_dict or summary_dict["Issue Description"] in ["Unknown", ""]:
+        # Prefer the raw first user message — it's always more descriptive than the AI summary
+        first_user_raw = ""
+        for m in messages:
+            if m["role"] == "user":
+                first_user_raw = m["content"].replace("**", "").replace("`", "").strip()
+                break
+        if first_user_raw:
+            summary_dict["Issue Description"] = first_user_raw[:200]  # cap at 200 chars
+        else:
+            summary_dict["Issue Description"] = st.session_state.get("ai_issue_description", "Unknown")
 
     # Pre-populate Device Type and Asset Number based strictly on USER messages to avoid assistant prompts polluting the parsing
     user_msgs = [m["content"] for m in messages if m["role"] == "user"]
@@ -2291,6 +2300,18 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             b_phone_val = st.session_state.get("ticket_backup_phone", "")
             
             diagnostic_dump_lines = []
+
+            # Always include the user's own words at the top of the description
+            first_user_msg_raw = ""
+            for m in st.session_state.get("messages", []):
+                if m["role"] == "user":
+                    first_user_msg_raw = m["content"].replace("**", "").replace("`", "").strip()
+                    break
+            if first_user_msg_raw:
+                diagnostic_dump_lines.append("[User Report]")
+                diagnostic_dump_lines.append(f"- Initial message: {first_user_msg_raw}")
+                diagnostic_dump_lines.append("")
+
             diagnostic_dump_lines.append("[Device Details]")
             diagnostic_dump_lines.append(f"- Store ID: {active_store}")
             diagnostic_dump_lines.append(f"- Location: {store_location}")
@@ -2505,6 +2526,18 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                 
             # Compile structured dump
             diagnostic_dump_lines = []
+
+            # Always include the user's own words at the top of the description
+            first_user_msg_raw = ""
+            for m in st.session_state.get("messages", []):
+                if m["role"] == "user":
+                    first_user_msg_raw = m["content"].replace("**", "").replace("`", "").strip()
+                    break
+            if first_user_msg_raw:
+                diagnostic_dump_lines.append("[User Report]")
+                diagnostic_dump_lines.append(f"- Initial message: {first_user_msg_raw}")
+                diagnostic_dump_lines.append("")
+
             diagnostic_dump_lines.append("[Device Details]")
             diagnostic_dump_lines.append(f"- Store ID: {active_store}")
             diagnostic_dump_lines.append(f"- Location: {store_location}")
@@ -2588,14 +2621,28 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             else:
                 full_description_dump = "\n".join(diagnostic_dump_lines)
 
-                # Build Short Description using AI summary of the conversation
-                try:
-                    _ai_client = ChipLLMClient()
-                    short_desc = _ai_client.generate_issue_description(st.session_state.messages)
-                    if not short_desc or short_desc.lower() == "unknown":
-                        short_desc = f"{sub_category.capitalize()} issue — {st.session_state.current_triage.get('Device Type', 'Hardware')}"
-                except Exception:
-                    short_desc = f"{sub_category.capitalize()} issue — {st.session_state.current_triage.get('Device Type', 'Hardware')}"
+                # Build Short Description deterministically from structured triage data
+                # (LLM call collapses to bare device name — use the data we already have)
+                _dev_type = st.session_state.current_triage.get("Device Type", "")
+                _asset_num = st.session_state.current_triage.get("Asset Number", "")
+                _issue_desc = st.session_state.current_triage.get("Issue Description", "")
+
+                # Prefer first user message as the issue description if triage captured only the device name
+                _bare_device_words = {"pos", "kiosk", "kvs", "kds", "bos", "printer", "unknown", ""}
+                if not _issue_desc or _issue_desc.lower().strip() in _bare_device_words:
+                    for _m in st.session_state.messages:
+                        if _m["role"] == "user":
+                            _issue_desc = _m["content"].replace("**", "").replace("`", "").strip()
+                            break
+
+                # Compose: "POS1 — garbled text and loud noise" or fall back to device+sub
+                if _asset_num and _asset_num not in ("Unknown", ""):
+                    short_desc = f"{_asset_num} — {_issue_desc}"
+                elif _dev_type and _dev_type not in ("Unknown", ""):
+                    short_desc = f"{_dev_type} — {_issue_desc}"
+                else:
+                    short_desc = _issue_desc or f"{sub_category.capitalize()} issue"
+
                 if len(short_desc) > 80:
                     short_desc = short_desc[:77] + "..."
             # Handle photo upload conversion for ticket submission
@@ -3392,11 +3439,11 @@ if user_input:
             "timestamp": ts_now,
             "blocked": False
         })
+        # Route through the priority form first so we always capture P1-P4 before the ticket form
         st.session_state.manual_ticket_flow = True
-        st.session_state.ticket_collection_active = True
-        st.session_state.ticket_collection_is_agent = False
+        start_escalation_triage(append_welcome=False)
         st.rerun()
-        
+
     elif "continue with automated flow" in lower_input:
         st.session_state.messages.append({
             "role": "user",
@@ -3404,16 +3451,17 @@ if user_input:
             "timestamp": ts_now,
             "blocked": False
         })
+        # Resume the LLM conversation — do NOT jump to ticket collection
         st.session_state.manual_ticket_flow = False
         st.session_state.ticket_collection_active = False
         st.session_state.messages.append({
             "role": "assistant",
-            "content": "Understood! Let's continue with the automated troubleshooting. Please describe your issue.",
+            "content": "Got it — let's keep troubleshooting. What happened after the last step you tried?",
             "timestamp": ts_now,
             "blocked": False
         })
         st.rerun()
-        
+
     # Intercept only explicit escalate/live-chat keyword requests from outside an active troubleshoot session
     # NOTE: Do NOT intercept ticket-related words here — that would block ticket status/action requests.
     # The escalation buttons are triggered ONLY by the LLM via the post-response check when troubleshooting is exhausted.

@@ -160,15 +160,15 @@ html, body, [class*="css"] {
   background: rgba(255,255,255,.06) !important;
   border: 1px solid rgba(255,255,255,.12) !important;
   color: #f0f2f8 !important;
-  font-size: 10px !important;
-  font-weight: 600 !important;
-  padding: 0 4px !important;
-  min-height: 28px !important;
-  height: 28px !important;
-  border-radius: 6px !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  padding: 0 12px !important;
+  min-height: 48px !important;
+  height: 48px !important;
+  border-radius: 10px !important;
   line-height: 1.2 !important;
   letter-spacing: .1px !important;
-  margin-top: 6px !important;
+  margin-top: 2px !important;
   display: flex !important;
   align-items: center !important;
 }
@@ -183,26 +183,26 @@ html, body, [class*="css"] {
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] svg {
   fill: #8892a4 !important;
-  width: 14px !important;
-  height: 14px !important;
+  width: 18px !important;
+  height: 18px !important;
 }
 
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [data-baseweb="select"] {
-  height: 28px !important;
+  height: 48px !important;
 }
 
 /* Override default large padding inside the header selectbox to fit store text */
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [class*="ValueContainer"] {
-  padding-left: 2px !important;
-  padding-right: 2px !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
 }
 
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [data-baseweb="select"] > div {
-  padding-left: 4px !important;
-  padding-right: 18px !important;
+  padding-left: 8px !important;
+  padding-right: 24px !important;
 }
 
 /* Custom styles for header buttons */
@@ -2430,10 +2430,10 @@ h_col1, h_col2 = st.columns([1.3, 1.9], gap="small")
 with h_col1:
     st.markdown(
         f"""
-        <div style="display:flex; align-items:center; gap:8px; height: 100%; margin-top: 4px;">
-            <div style="font-size:20px; background:linear-gradient(135deg, var(--accent) 0%, var(--text-accent) 100%); width:32px; height:32px; border-radius:6px; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 8px var(--accent-glow); flex-shrink:0;">🍔</div>
+        <div style="display:flex; align-items:center; gap:12px; height: 100%; margin-top: 2px;">
+            <div style="font-size:28px; background:linear-gradient(135deg, var(--accent) 0%, var(--text-accent) 100%); width:46px; height:46px; border-radius:10px; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 8px var(--accent-glow); flex-shrink:0;">🍔</div>
             <div style="min-width:0;">
-                <div style="font-size:22px; font-weight:800; color:#f0f2f8; line-height:1.0; letter-spacing:-0.5px; padding-bottom: 2px;">Chip</div>
+                <div style="font-size:28px; font-weight:800; color:#f0f2f8; line-height:1.0; letter-spacing:-0.5px; padding-bottom: 2px;">Chip</div>
             </div>
         </div>
         """,
@@ -2441,15 +2441,46 @@ with h_col1:
     )
 
 with h_col2:
-    selected_store = st.selectbox(
-        "Header Store select",
-        options=STORE_OPTIONS,
-        index=STORE_OPTIONS.index(st.session_state.active_store) if st.session_state.active_store in STORE_OPTIONS else 0,
-        format_func=lambda x: f"Store: {x}",
-        label_visibility="collapsed",
-        key="header_store_selector",
-        on_change=load_store_context
-    )
+    col_store, col_metric = st.columns([1.7, 1.3], gap="small")
+    with col_store:
+        selected_store = st.selectbox(
+            "Header Store select",
+            options=STORE_OPTIONS,
+            index=STORE_OPTIONS.index(st.session_state.active_store) if st.session_state.active_store in STORE_OPTIONS else 0,
+            format_func=lambda x: f"Store: {x}",
+            label_visibility="collapsed",
+            key="header_store_selector",
+            on_change=load_store_context
+        )
+    with col_metric:
+        active_count = len(st.session_state.get("active_tickets", []))
+        st.markdown(
+            f"""
+            <div style="
+                background: rgba(255, 255, 255, 0.06);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                color: #f0f2f8;
+                font-size: 18px;
+                font-weight: 700;
+                padding: 0 12px;
+                min-height: 48px;
+                height: 48px;
+                border-radius: 10px;
+                line-height: 46px;
+                letter-spacing: 0.1px;
+                margin-top: 2px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                width: 100%;
+                box-sizing: border-box;
+            ">
+                <span style="font-size: 18px;">📋</span> Active Cases: <span style="color: var(--accent); font-weight: 700; margin-left: 2px; font-size: 18px;">{active_count}</span>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
 # ---------------------------------------------------------------------------
 # Major Outages / MIMs Alert

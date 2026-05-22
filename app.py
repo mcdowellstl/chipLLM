@@ -36,7 +36,7 @@ st.set_page_config(
     page_title="chipLLM · Restaurant Tech Support",
     page_icon="🍔",
     layout="centered",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ---------------------------------------------------------------------------
@@ -48,6 +48,14 @@ st.markdown(
 <style>
 /* ── Google Font ─────────────────────────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* Completely hide the sidebar and collapsed control arrow */
+[data-testid="stSidebar"] {
+  display: none !important;
+}
+[data-testid="collapsedControl"] {
+  display: none !important;
+}
 
 /* ── Root tokens ─────────────────────────────────────────────────────────── */
 :root {
@@ -1863,7 +1871,7 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 
 st.markdown('<div id="header-sentinel"></div>', unsafe_allow_html=True)
-h_col1, h_col2, h_col3, h_col4 = st.columns([1.3, 1.9, 1.1, 0.8], gap="small")
+h_col1, h_col2 = st.columns([1.3, 1.9], gap="small")
 
 with h_col1:
     st.markdown(
@@ -1896,14 +1904,6 @@ with h_col2:
             "blocked": False
         })
         st.rerun()
-
-with h_col3:
-    if st.button("🎫 Open Case", use_container_width=True, key="btn_header_case"):
-        ask_case_flow_options("Open Case")
-
-with h_col4:
-    if st.button("Live Agent", use_container_width=True, key="btn_header_agent"):
-        trigger_live_agent_flow("Live Agent")
 
 # ---------------------------------------------------------------------------
 # Welcome message (injected once)

@@ -926,6 +926,39 @@ def check_escalation_intent(user_input: str) -> bool:
     return any(kw in lower_input for kw in keywords)
 
 
+def is_ticket_status_lookup_intent(text: str) -> bool:
+    """
+    Checks if the user's message is asking about existing ticket statuses, open cases,
+    or recent store issues, rather than asking to create/open a new ticket.
+    """
+    import re
+    if not text:
+        return False
+    lower_text = text.strip().lower()
+    
+    # If a specific ticket ID is mentioned, it's definitely a lookup/status check
+    if re.search(r"\binc[-_]?\d+\b", lower_text):
+        return True
+        
+    # Flexible check for recent ticket inquiries
+    if "recent" in lower_text and any(w in lower_text for w in ["issue", "ticket", "case"]):
+        return True
+        
+    # Phrases indicating lookup/inquiry about existing tickets/cases
+    lookup_keywords = [
+        "active tickets", "open tickets", "my tickets", "store tickets", "existing tickets",
+        "active cases", "open cases", "my cases", "store cases", "existing cases",
+        "ticket status", "case status", "status of my", "status of the", "status of inc",
+        "check status", "check ticket", "check case", "any tickets", "any cases",
+        "list tickets", "list cases", "show tickets", "show cases", "recent issues",
+        "recent tickets", "recent cases", "view tickets", "view cases", "what tickets",
+        "what cases", "current tickets", "current cases", "outstanding tickets",
+        "outstanding cases", "status check"
+    ]
+    
+    return any(kw in lower_text for kw in lookup_keywords)
+
+
 def parse_comment_update_intent(text: str) -> tuple[str, str] | None:
     """
     Parses conversational user intent to add a note/comment to a ticket.
@@ -2817,8 +2850,8 @@ if user_input:
         })
         st.rerun()
         
-    # Intercept manual ticket escalation keywords
-    elif "escalate" in lower_input or "ticket" in lower_input or "open case" in lower_input:
+    # Intercept manual ticket escalation keywords (exclude existing ticket status lookups)
+    elif ("escalate" in lower_input or "ticket" in lower_input or "open case" in lower_input) and not is_ticket_status_lookup_intent(user_input):
         ask_case_flow_options(user_input)
         
     else:

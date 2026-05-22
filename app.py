@@ -3393,6 +3393,8 @@ if user_input:
         with st.chat_message("assistant", avatar="👨‍💻"):
             full_response = ""
             response_placeholder = st.empty()
+            if is_ticket_status_lookup_intent(user_input):
+                response_placeholder.markdown("Retrieving data...")
 
             try:
                 logger.info("Starting Gemini API streaming response.")

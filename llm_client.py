@@ -393,7 +393,8 @@ def add_case_comment(case_id: str, comment_text: str) -> str:
 
     try:
         from mocks.servicenow import append_case_comment
-        result = append_case_comment(case_id, comment_text, author="Store Manager")
+        author = st.session_state.get("current_user") or "Store Manager"
+        result = append_case_comment(case_id, comment_text, author=author)
         if "error" in result:
             local_logger.warning("add_case_comment error from data layer: %s", result["error"])
             return f"Sorry, I couldn't add the comment: {result['error']}"

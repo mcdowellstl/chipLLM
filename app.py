@@ -34,6 +34,9 @@ from llm_client import ChipLLMClient, extract_ticket_metadata
 DEFAULT_STORE  = "67067"               # pre-selected default
 STORE_OPTIONS  = ["67067", "67068", "67069"]  # all authorized stores
 
+# Authenticated user identity — single source of truth for display name and case authorship
+CURRENT_USER_NAME = "Jim Halpert"
+
 # ---------------------------------------------------------------------------
 # L0_KA Playbook Directory (Dynamic RAG)
 # ---------------------------------------------------------------------------
@@ -546,6 +549,9 @@ if "active_store" not in st.session_state:
 # Track the last case the user viewed/discussed so mutation tools have a target
 if "active_case_id" not in st.session_state:
     st.session_state.active_case_id = None
+# Authenticated user identity — available to tool functions via session state
+if "current_user" not in st.session_state:
+    st.session_state.current_user = CURRENT_USER_NAME
 if "active_tickets" not in st.session_state:
     from mocks.servicenow import get_store_tickets
     st.session_state.active_tickets = get_store_tickets(st.session_state.active_store)
@@ -2217,7 +2223,7 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
         
         # Name (non-modifiable)
         st.markdown("<div class='lock-lbl'>Name 🔒</div>", unsafe_allow_html=True)
-        name_val = st.text_input("Name", value="Jim Halpert", disabled=True, label_visibility="collapsed", key="ticket_name")
+        name_val = st.text_input("Name", value=CURRENT_USER_NAME, disabled=True, label_visibility="collapsed", key="ticket_name")
         
         # Store # (non-modifiable)
         st.markdown("<div class='lock-lbl'>Store # 🔒</div>", unsafe_allow_html=True)
@@ -2288,7 +2294,7 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             diagnostic_dump_lines.append("[Device Details]")
             diagnostic_dump_lines.append(f"- Store ID: {active_store}")
             diagnostic_dump_lines.append(f"- Location: {store_location}")
-            diagnostic_dump_lines.append(f"- Reporter: Jim Halpert (Phone: {p_val})")
+            diagnostic_dump_lines.append(f"- Reporter: {CURRENT_USER_NAME} (Phone: {p_val})")
             
             t_model = st.session_state.current_triage.get("Device Model")
             if t_model and t_model != "Unknown":
@@ -2502,7 +2508,7 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             diagnostic_dump_lines.append("[Device Details]")
             diagnostic_dump_lines.append(f"- Store ID: {active_store}")
             diagnostic_dump_lines.append(f"- Location: {store_location}")
-            diagnostic_dump_lines.append(f"- Reporter: Jim Halpert (Phone: {phone_val})")
+            diagnostic_dump_lines.append(f"- Reporter: {CURRENT_USER_NAME} (Phone: {phone_val})")
             
             t_model = st.session_state.current_triage.get("Device Model")
             if t_model and t_model != "Unknown":
@@ -2612,7 +2618,7 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                 "short_description": short_desc,
                 "category": category,
                 "sub_category": sub_category,
-                "caller": f"Jim Halpert, Store #{active_store}, {store_location}",
+                "caller": f"{CURRENT_USER_NAME}, Store #{active_store}, {store_location}",
                 "contact_type": "chat",
                 "assignment_group": "Unisys RTS L1 - SD - US",
                 "priority": st.session_state.current_triage.get("Priority", "P3"),
@@ -2625,7 +2631,7 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             
             # Create the case in Supabase/storage layer
             from mocks.servicenow import create_case, get_active_cases
-            username = st.session_state.get("ticket_name", "Jim Halpert")
+            username = st.session_state.get("ticket_name", CURRENT_USER_NAME)
             create_case({
                 "id": inc_num,
                 "store_id": active_store,

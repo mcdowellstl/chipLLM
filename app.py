@@ -1275,9 +1275,23 @@ def get_choices_from_message(content: str) -> list[str]:
     # 0. No-KB-match or troubleshooting exhausted stopper choices
     # Do NOT display buttons when the user is doing anything involving ticket/case status
     last_user_input = st.session_state.get("last_user_input", "")
+    is_lookup = is_ticket_status_lookup_intent(last_user_input)
+
+    # Full two-button escalation — only for genuine troubleshooting exhaustion
     if "how would you like to proceed" in content_lower and ("open a support ticket" in content_lower or "live chat" in content_lower):
-        if not is_ticket_status_lookup_intent(last_user_input):
+        if not is_lookup:
             return ["Open a support ticket", "Live Chat with an Agent"]
+
+    # Single "Live Chat with an Agent" chip — when LLM says it can't act on a ticket
+    # and directs the user to an agent (but not to open a new ticket)
+    live_chat_phrases = [
+        "live chat with an agent",
+        "live chat with an agent who can help",
+        "chat with an agent who can",
+        "chat with a live agent",
+    ]
+    if is_lookup and any(phrase in content_lower for phrase in live_chat_phrases):
+        return ["Live Chat with an Agent"]
 
     # 0. Case routing choices
     if "cases with more details" in content_lower or "quicker resolution" in content_lower:
@@ -1347,20 +1361,67 @@ _TICKET_STATUS_BORDERS = {
 }
 
 
-def _colorize_ticket_tables(content: str) -> str:
+def _md_table_to_html(md_table: str) -> str:
     """
-    Wraps each markdown ticket table in a colored <div> based on the Status row value.
-    Looks for tables that contain a | **Status** | ... | row and wraps the whole
-    table block (from the first | to the last |) in a styled div.
+    Converts a markdown table string into an HTML <table> element.
+    Handles the header, separator (|----|), and data rows.
+    Strips markdown bold (**text**) from cell values for clean display.
     """
     import re
-    # Match a markdown table block: one or more lines starting and ending with |
+    lines = [l.strip() for l in md_table.strip().splitlines() if l.strip()]
+    # Filter out separator rows (only dashes/pipes/colons)
+    data_lines = [l for l in lines if not re.fullmatch(r'[\|\s\-\:]+', l)]
+    if not data_lines:
+        return md_table
+
+    def parse_row(line: str) -> list[str]:
+        # Split on | and strip each cell; remove leading/trailing empty strings
+        cells = line.split('|')
+        return [c.strip() for c in cells if c.strip() != '']
+
+    def clean_cell(text: str) -> str:
+        # Remove markdown bold (**...**)
+        return re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+
+    rows = [parse_row(l) for l in data_lines]
+    if not rows:
+        return md_table
+
+    html_rows = []
+    for row_idx, row in enumerate(rows):
+        cells_html = ''.join(
+            f'<{"th" if row_idx == 0 else "td"} style="padding:6px 10px; '
+            f'border-bottom:1px solid rgba(255,255,255,0.08); '
+            f'{"font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#aab; " if row_idx == 0 else "font-size:13px; "}'
+            f'vertical-align:top; word-break:break-word; max-width:360px;">'
+            f'{clean_cell(c)}'
+            f'</{"th" if row_idx == 0 else "td"}>'
+            for c in row
+        )
+        html_rows.append(f'<tr>{cells_html}</tr>')
+
+    return (
+        '<table style="width:100%; border-collapse:collapse; '
+        'font-family:inherit; color:inherit;">'
+        + ''.join(html_rows)
+        + '</table>'
+    )
+
+
+def _colorize_ticket_tables(content: str) -> str:
+    """
+    Finds markdown ticket tables, converts them to HTML tables, and wraps each
+    in a status-colored <div>. This avoids the Streamlit issue where markdown
+    inside HTML divs is not rendered as markdown.
+    """
+    import re
+    # Match a markdown table block: one or more consecutive pipe-delimited lines
     table_pattern = re.compile(
         r'((?:[ \t]*\|[^\n]+\n)+)',
         re.MULTILINE
     )
 
-    def wrap_table(m: re.Match) -> str:
+    def convert_and_wrap(m: re.Match) -> str:
         table_text = m.group(1)
         # Look for a Status row: | **Status** | <value> |
         status_match = re.search(
@@ -1374,15 +1435,17 @@ def _colorize_ticket_tables(content: str) -> str:
         border = _TICKET_STATUS_BORDERS.get(raw_status)
         if not bg:
             return table_text  # unknown status — leave unstyled
+
+        html_table = _md_table_to_html(table_text)
         return (
             f'<div style="background:{bg}; border:1px solid {border}; '
             f'border-left:4px solid {border}; border-radius:10px; '
-            f'padding:14px 16px; margin:14px 0;">\n'
-            f'{table_text.rstrip()}\n'
+            f'padding:14px 16px; margin:14px 0;">'
+            f'{html_table}'
             f'</div>\n'
         )
 
-    return table_pattern.sub(wrap_table, content)
+    return table_pattern.sub(convert_and_wrap, content)
 
 
 def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:

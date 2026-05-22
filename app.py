@@ -1361,91 +1361,187 @@ _TICKET_STATUS_BORDERS = {
 }
 
 
-def _md_table_to_html(md_table: str) -> str:
-    """
-    Converts a markdown table string into an HTML <table> element.
-    Handles the header, separator (|----|), and data rows.
-    Strips markdown bold (**text**) from cell values for clean display.
-    """
-    import re
-    lines = [l.strip() for l in md_table.strip().splitlines() if l.strip()]
-    # Filter out separator rows (only dashes/pipes/colons)
-    data_lines = [l for l in lines if not re.fullmatch(r'[\|\s\-\:]+', l)]
-    if not data_lines:
-        return md_table
-
-    def parse_row(line: str) -> list[str]:
-        # Split on | and strip each cell; remove leading/trailing empty strings
-        cells = line.split('|')
-        return [c.strip() for c in cells if c.strip() != '']
-
-    def clean_cell(text: str) -> str:
-        # Remove markdown bold (**...**)
-        return re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
-
-    rows = [parse_row(l) for l in data_lines]
-    if not rows:
-        return md_table
-
-    html_rows = []
-    for row_idx, row in enumerate(rows):
-        cells_html = ''.join(
-            f'<{"th" if row_idx == 0 else "td"} style="padding:6px 10px; '
-            f'border-bottom:1px solid rgba(255,255,255,0.08); '
-            f'{"font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#aab; " if row_idx == 0 else "font-size:13px; "}'
-            f'vertical-align:top; word-break:break-word; max-width:360px;">'
-            f'{clean_cell(c)}'
-            f'</{"th" if row_idx == 0 else "td"}>'
-            for c in row
-        )
-        html_rows.append(f'<tr>{cells_html}</tr>')
-
-    return (
-        '<table style="width:100%; border-collapse:collapse; '
-        'font-family:inherit; color:inherit;">'
-        + ''.join(html_rows)
-        + '</table>'
-    )
-
-
 def _colorize_ticket_tables(content: str) -> str:
     """
-    Finds markdown ticket tables, converts them to HTML tables, and wraps each
-    in a status-colored <div>. This avoids the Streamlit issue where markdown
-    inside HTML divs is not rendered as markdown.
+    Parses the response content to find ticket tables, including those with broken
+    multi-line comments or missing pipes, converts them to HTML tables, and wraps
+    them in status-colored divs. This prevents layout issues where comments
+    might be broken into multiple lines or fall outside the table bounds.
     """
     import re
-    # Match a markdown table block: one or more consecutive pipe-delimited lines
-    table_pattern = re.compile(
-        r'((?:[ \t]*\|[^\n]+\n)+)',
-        re.MULTILINE
-    )
-
-    def convert_and_wrap(m: re.Match) -> str:
-        table_text = m.group(1)
-        # Look for a Status row: | **Status** | <value> |
-        status_match = re.search(
-            r'\|\s*\*{0,2}Status\*{0,2}\s*\|\s*([^|\n]+?)\s*\|',
-            table_text, re.IGNORECASE
+    lines = content.splitlines()
+    processed_lines = []
+    
+    in_ticket = False
+    ticket_lines = []
+    
+    def process_ticket_block(t_lines: list[str]) -> str:
+        # 1. Find the status
+        raw_status = None
+        for line in t_lines:
+            status_match = re.search(
+                r'\|\s*\*{0,2}Status\*{0,2}\s*\|\s*([^|\n]+?)\s*\|',
+                line, re.IGNORECASE
+            )
+            if status_match:
+                raw_status = status_match.group(1).strip().lower()
+                break
+                
+        bg = _TICKET_STATUS_COLORS.get(raw_status) if raw_status else None
+        border = _TICKET_STATUS_BORDERS.get(raw_status) if raw_status else None
+        
+        # 2. Parse and normalize rows
+        normalized_rows = []
+        current_cells = []
+        
+        for line in t_lines:
+            line_stripped = line.strip()
+            if not line_stripped:
+                continue
+                
+            if re.fullmatch(r'[\|\s\-\:]+', line_stripped):
+                continue
+                
+            if line_stripped.startswith('|'):
+                raw_parts = line_stripped.split('|')
+                if raw_parts[0] == '':
+                    raw_parts = raw_parts[1:]
+                if raw_parts and raw_parts[-1] == '':
+                    raw_parts = raw_parts[:-1]
+                    
+                cells = [c.strip() for c in raw_parts]
+                if len(cells) >= 2:
+                    if current_cells:
+                        normalized_rows.append(current_cells)
+                    current_cells = [cells[0], cells[1]]
+                elif len(cells) == 1:
+                    if current_cells:
+                        current_cells[1] += "<br>" + cells[0]
+                    else:
+                        current_cells = ["", cells[0]]
+            else:
+                clean_line = line_stripped.rstrip('|').strip()
+                if current_cells:
+                    current_cells[1] += "<br>" + clean_line
+                else:
+                    current_cells = ["", clean_line]
+                    
+        if current_cells:
+            normalized_rows.append(current_cells)
+            
+        if not normalized_rows:
+            return '\n'.join(t_lines)
+            
+        def clean_cell(text: str) -> str:
+            return re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+            
+        html_rows = []
+        for row_idx, row in enumerate(normalized_rows):
+            key = row[0]
+            val = row[1]
+            
+            key_clean = clean_cell(key)
+            val_clean = clean_cell(val)
+            
+            is_header = row_idx == 0 and key_clean.lower() == "field"
+            
+            cells_html = (
+                f'<th style="padding:8px 12px; text-align:left; '
+                f'border-bottom:1.5px solid rgba(255,255,255,0.12); '
+                f'font-weight:700; font-size:11.5px; text-transform:uppercase; letter-spacing:0.8px; color:#aab;">'
+                f'{key_clean}'
+                f'</th>'
+                f'<th style="padding:8px 12px; text-align:left; '
+                f'border-bottom:1.5px solid rgba(255,255,255,0.12); '
+                f'font-weight:700; font-size:11.5px; text-transform:uppercase; letter-spacing:0.8px; color:#aab;">'
+                f'{val_clean}'
+                f'</th>'
+            ) if is_header else (
+                f'<td style="padding:8px 12px; border-bottom:1px solid rgba(255,255,255,0.06); '
+                f'font-weight:600; font-size:12.5px; color:#8892a4; vertical-align:top; width:25%;">'
+                f'{key_clean}'
+                f'</td>'
+                f'<td style="padding:8px 12px; border-bottom:1px solid rgba(255,255,255,0.06); '
+                f'font-size:13.5px; color:var(--text-primary); vertical-align:top; word-break:break-word;">'
+                f'{val_clean}'
+                f'</td>'
+            )
+            html_rows.append(f'<tr>{cells_html}</tr>')
+            
+        html_table = (
+            f'<table style="width:100%; border-collapse:collapse; '
+            f'font-family:inherit;">'
+            + ''.join(html_rows)
+            + '</table>'
         )
-        if not status_match:
-            return table_text  # not a ticket table — leave as-is
-        raw_status = status_match.group(1).strip().lower()
-        bg = _TICKET_STATUS_COLORS.get(raw_status)
-        border = _TICKET_STATUS_BORDERS.get(raw_status)
-        if not bg:
-            return table_text  # unknown status — leave unstyled
+        
+        if bg and border:
+            return (
+                f'<div style="background:{bg}; border:1px solid {border}; '
+                f'border-left:4px solid {border}; border-radius:10px; '
+                f'padding:14px 16px; margin:14px 0;">'
+                f'{html_table}'
+                f'</div>'
+            )
+        else:
+            return html_table
 
-        html_table = _md_table_to_html(table_text)
-        return (
-            f'<div style="background:{bg}; border:1px solid {border}; '
-            f'border-left:4px solid {border}; border-radius:10px; '
-            f'padding:14px 16px; margin:14px 0;">'
-            f'{html_table}'
-            f'</div>\n'
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        line_stripped = line.strip()
+        
+        is_table_header = (
+            line_stripped.startswith('|') and 
+            ("field" in line_stripped.lower() or "ticket id" in line_stripped.lower())
         )
-
-    return table_pattern.sub(convert_and_wrap, content)
+        
+        if not in_ticket and is_table_header:
+            in_ticket = True
+            ticket_lines = [line]
+            idx += 1
+            continue
+            
+        if in_ticket:
+            stop_ticket = False
+            
+            if is_table_header:
+                stop_ticket = True
+            elif "there are also" in line_stripped.lower() and "closed" in line_stripped.lower():
+                stop_ticket = True
+            elif not line_stripped:
+                peek_idx = idx + 1
+                next_non_empty = None
+                while peek_idx < len(lines):
+                    if lines[peek_idx].strip():
+                        next_non_empty = lines[peek_idx].strip()
+                        break
+                    peek_idx += 1
+                    
+                if next_non_empty:
+                    if next_non_empty.startswith('|') and ("field" in next_non_empty.lower() or "ticket id" in next_non_empty.lower()):
+                        stop_ticket = True
+                    elif not next_non_empty.startswith('|') and not next_non_empty.startswith('•') and not next_non_empty.startswith('*') and not next_non_empty.startswith('-'):
+                        stop_ticket = True
+                else:
+                    stop_ticket = True
+                    
+            if stop_ticket:
+                in_ticket = False
+                processed_lines.append(process_ticket_block(ticket_lines))
+                ticket_lines = []
+                continue
+            else:
+                ticket_lines.append(line)
+                idx += 1
+        else:
+            processed_lines.append(line)
+            idx += 1
+            
+    if in_ticket:
+        processed_lines.append(process_ticket_block(ticket_lines))
+        
+    return '\n'.join(processed_lines)
 
 
 def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:

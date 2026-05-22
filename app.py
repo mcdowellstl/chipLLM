@@ -1261,8 +1261,11 @@ def get_choices_from_message(content: str) -> list[str]:
     content_lower = content.lower()
     
     # 0. Case detail view — ALWAYS suppress chips/buttons entirely.
-    # The LLM renders a structured case log. No parenthetical or chip should ever fire on this.
-    if "recent activity" in content_lower or "what's the plan for this issue" in content_lower:
+    # Matches both the old 'recent activity' and new 'activity:' / 'how do you want' markers.
+    if ("activity:" in content_lower
+            or "recent activity" in content_lower
+            or "how do you want to handle this" in content_lower
+            or "what's the plan for this issue" in content_lower):
         return []
 
     # 0. Case options prompt bubbles - BANNED under UI Reboot
@@ -1617,6 +1620,45 @@ def _colorize_ticket_tables(content: str) -> str:
     return '\n'.join(processed_lines)
 
 
+def _reformat_case_detail_view(content: str) -> str:
+    """
+    Deterministically reformat a case detail view response so every section
+    is separated by exactly two newlines (\n\n), regardless of what the LLM produced.
+
+    Detected by the presence of 'Ticket ' at the start and 'Activity:' in the body.
+    Preserves the exact field values; only normalises whitespace/separators.
+    """
+    import re
+
+    # Detect: must start with "Ticket " line and contain "Activity:"
+    stripped = content.strip()
+    if not re.match(r'^Ticket\s+\S', stripped) or 'activity:' not in stripped.lower():
+        return content
+
+    # Collect all meaningful lines (non-empty after stripping)
+    raw_lines = [ln.strip() for ln in re.split(r'\r?\n', stripped)]
+    sections = [ln for ln in raw_lines if ln]  # drop blank lines — we'll add our own
+
+    # Bucket each line into its role so we can rebuild cleanly
+    result_parts = []
+    _CLOSING_LINES = {
+        "how do you want to handle this",
+        "what's the plan for this issue",
+        "what would you like to do with this case",
+    }
+
+    for line in sections:
+        # Strip trailing punctuation and spaces before comparing
+        line_bare = re.sub(r'[?.!,\s]+$', '', line.lower())
+        if line_bare in _CLOSING_LINES:
+            result_parts.append("How do you want to handle this?")
+        else:
+            result_parts.append(line)
+
+    # Join with exactly \n\n between every element
+    return "\n\n".join(result_parts)
+
+
 def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
     """
     Remove parenthesized options list from assistant messages if suggestion chips will be displayed,
@@ -1630,6 +1672,12 @@ def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
 
     # Skip processing for the case details summary block
     if "Case Details Collected So Far" in content:
+        return content
+
+    # 0. Case detail view — reformat deterministically with \n\n spacing
+    content = _reformat_case_detail_view(content)
+    # If this is a case detail view, return immediately (skip all other processing)
+    if content.strip().startswith("Ticket ") and "Activity:" in content:
         return content
 
     # Colorize ticket markdown tables by status (must run before any further manipulation)

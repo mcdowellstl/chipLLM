@@ -1971,12 +1971,26 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             for msg in st.session_state.messages:
                 if msg["role"] == "assistant":
                     content = msg["content"]
-                    if any(step_kw in content for step_kw in ["Reboot", "Power cycle", "Clear the Paper Jam", "Clean the Card Reader", "Restart"]):
+                    content_lower = content.lower()
+                    step_kws = ["reboot", "power cycle", "paper jam", "card reader", "restart", "cable", "connection", "software update"]
+                    if any(kw in content_lower for kw in step_kws):
                         step_title = "Step"
-                        for line in content.split('\n'):
-                            if any(kw in line for kw in ["Reboot", "Jam", "Cable", "Power", "Reader"]):
-                                step_title = line.replace("**", "").replace("`", "").replace("##", "").strip()
-                                break
+                        if "reboot" in content_lower or "restart" in content_lower or "power cycle" in content_lower:
+                            step_title = "Power Cycle / Restart Device"
+                        elif "cable" in content_lower or "connection" in content_lower:
+                            step_title = "Check Cables & Connections"
+                        elif "software update" in content_lower or "outdated software" in content_lower or "pending software" in content_lower:
+                            step_title = "Check & Install Software Updates"
+                        elif "paper jam" in content_lower or "roller c" in content_lower:
+                            step_title = "Clear Paper Jam"
+                        elif "card reader" in content_lower:
+                            step_title = "Clean Card Reader"
+                        else:
+                            for line in content.split('\n'):
+                                line_lower = line.lower()
+                                if any(kw in line_lower for kw in ["reboot", "jam", "cable", "connection", "power", "reader", "restart", "software", "update"]):
+                                    step_title = line.replace("**", "").replace("`", "").replace("##", "").strip()
+                                    break
                         diagnostic_dump_lines.append(f"{step_index}. {step_title} (Attempted) -> Outcome: Did not resolve the issue.")
                         step_index += 1
     
@@ -2163,12 +2177,26 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
             for msg in st.session_state.messages:
                 if msg["role"] == "assistant":
                     content = msg["content"]
-                    if any(step_kw in content for step_kw in ["Reboot", "Power cycle", "Clear the Paper Jam", "Clean the Card Reader", "Restart"]):
+                    content_lower = content.lower()
+                    step_kws = ["reboot", "power cycle", "paper jam", "card reader", "restart", "cable", "connection", "software update"]
+                    if any(kw in content_lower for kw in step_kws):
                         step_title = "Step"
-                        for line in content.split('\n'):
-                            if any(kw in line for kw in ["Reboot", "Jam", "Cable", "Power", "Reader"]):
-                                step_title = line.replace("**", "").replace("`", "").replace("##", "").strip()
-                                break
+                        if "reboot" in content_lower or "restart" in content_lower or "power cycle" in content_lower:
+                            step_title = "Power Cycle / Restart Device"
+                        elif "cable" in content_lower or "connection" in content_lower:
+                            step_title = "Check Cables & Connections"
+                        elif "software update" in content_lower or "outdated software" in content_lower or "pending software" in content_lower:
+                            step_title = "Check & Install Software Updates"
+                        elif "paper jam" in content_lower or "roller c" in content_lower:
+                            step_title = "Clear Paper Jam"
+                        elif "card reader" in content_lower:
+                            step_title = "Clean Card Reader"
+                        else:
+                            for line in content.split('\n'):
+                                line_lower = line.lower()
+                                if any(kw in line_lower for kw in ["reboot", "jam", "cable", "connection", "power", "reader", "restart", "software", "update"]):
+                                    step_title = line.replace("**", "").replace("`", "").replace("##", "").strip()
+                                    break
                         diagnostic_dump_lines.append(f"{step_index}. {step_title} (Attempted) -> Outcome: Did not resolve the issue.")
                         step_index += 1
     

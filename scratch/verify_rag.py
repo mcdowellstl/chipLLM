@@ -19,7 +19,12 @@ queries = [
     "printer is jammed",
     "KDS monitor is blank",
     "card reader check",
-    "kiosk boot loop"
+    "kiosk boot loop",
+    "Google edge server offline",
+    "McCafe printer not printing",
+    "automated beverage system syrup flat",
+    "drive thru loop detector fail",
+    "kiosk cash acceptor bill jam"
 ]
 
 for q in queries:

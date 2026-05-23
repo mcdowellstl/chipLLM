@@ -462,6 +462,36 @@ html, body, [class*="css"] {
   box-shadow: 0 0 0 2px #ffc72c !important;
 }
 
+/* Metric button style override */
+div.metric-btn-marker + div.stButton > button {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #f0f2f8 !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  padding: 0 10px !important;
+  min-height: 42px !important;
+  height: 42px !important;
+  border-radius: 8px !important;
+  line-height: 40px !important;
+  letter-spacing: 0.1px !important;
+  margin-top: 2px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
+}
+
+div.metric-btn-marker + div.stButton > button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
 /* ── Streamlit default markdown in chat ──────────────────────────────────── */
 .stMarkdown p { margin: 0 0 6px; }
 .stMarkdown ol, .stMarkdown ul { padding-left: 18px; margin: 4px 0; }
@@ -3079,35 +3109,20 @@ with h_col2:
             on_change=load_store_context
         )
     with col_metric:
-        active_count = len(st.session_state.get("active_tickets", []))
-        st.markdown(
-            f"""
-            <div style="
-                background: rgba(255, 255, 255, 0.06);
-                border: 1px solid rgba(255, 255, 255, 0.12);
-                color: #f0f2f8;
-                font-size: 15px;
-                font-weight: 700;
-                padding: 0 10px;
-                min-height: 42px;
-                height: 42px;
-                border-radius: 8px;
-                line-height: 40px;
-                letter-spacing: 0.1px;
-                margin-top: 2px;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                gap: 6px;
-                width: 100%;
-                box-sizing: border-box;
-                white-space: nowrap;
-            ">
-                <span style="font-size: 15px;">📋</span> Active Cases: <span style="color: var(--accent); font-weight: 700; margin-left: 2px; font-size: 15px;">{active_count}</span>
-            </div>
-            """,
-            unsafe_allow_html=True
+        active_tickets = st.session_state.get("active_tickets", [])
+        active_count = sum(
+            1 for t in active_tickets 
+            if (t.get("status") or t.get("state") or "").strip().lower() != "closed"
         )
+        st.markdown("<div class='metric-btn-marker'></div>", unsafe_allow_html=True)
+        metric_btn_clicked = st.button(
+            f"📋 Active Cases: {active_count}",
+            key="header_active_cases_btn",
+            use_container_width=True
+        )
+        if metric_btn_clicked:
+            st.session_state.suggestion_click = "show active cases"
+            st.rerun()
     if has_dismissed_mim:
         with col_mim:
             restore_clicked = st.button("⚠️", key="restore_mim_button", help="Click to restore Major Incident Outage banner")

@@ -84,11 +84,11 @@ For any tech issue reported, you MUST follow this exact sequential progression:
        - First, determine if the user has already provided the symptom/issue (such as "paper jam", "not printing", "garbled text", "paper out", "beeping") in their initial message. If they did, **determine the issue from their text and do not ask them for it later**.
        - If they haven't provided the printer type, ask exactly this question: "What type of printer is this?" with these exact options inside parenthesis: `("POS", "KVS", "Kiosk", or "BOS")`. Never use a bulleted or numbered list.
        - **STRICT GATE — read the user's exact answer to the printer type before proceeding:**
-         - If the printer type is **exactly "POS"** (case-insensitive): ask "Which POS number is this printer connected to?" and wait for the answer. Then, if the symptom was not already provided in the history, ask for the symptom.
-         - If the printer type is **exactly "Kiosk"** (case-insensitive): ask "Which Kiosk number is this printer connected to?" and wait for the answer. Then, if the symptom was not already provided in the history, ask for the symptom.
+         - If the printer type is **exactly "POS"** (case-insensitive): ask "Which POS number is this printer connected to? ("1", "2", "3", "4", or "All of them")" and wait for the answer. Then, if the symptom was not already provided in the history, ask for the symptom.
+         - If the printer type is **exactly "Kiosk"** (case-insensitive): ask "Which Kiosk number is this printer connected to? ("1", "2", "3", "4", or "All of them")" and wait for the answer. Then, if the symptom was not already provided in the history, ask for the symptom.
          - If the printer type is **anything else** — including "KVS", "BOS", "mccafe printer", or any free-text response that does not precisely match "POS" or "Kiosk" — **skip the connected-device question entirely**. Then, if the symptom was not already provided in the history, ask for the symptom. If the symptom was already provided, skip it and proceed directly to gathering more info or beginning troubleshooting.
        - If you need to ask for the symptom, use exactly these options inside parenthesis: `("Paper Jam", "Not Printing at All", "Printing Garbled Text", "Paper Out", or "Error Light / Beeping")`. If the user already provided the symptom (e.g. "paper jam" or "not printing") in their initial text or history, **skip asking the symptom question entirely** and proceed directly to the next phase (more info / troubleshooting).
-     - **Kiosks and POS**: The playbooks (e.g., `kiosk_triage`, `pos_triage`) do NOT require asking where in the store the device is located. First ask for the specific unit/device number (e.g., Kiosk #, POS #). If the user already provided the symptom/issue (such as "frozen", "black screen", "card reader failing", or "receipt print error") in their initial message or history, **skip asking the symptom question entirely** and proceed directly to the next phase (troubleshooting).
+     - **Kiosks and POS**: The playbooks (e.g., `kiosk_triage`, `pos_triage`) do NOT require asking where in the store the device is located. First ask for the specific unit/device number (e.g., Kiosk #, POS #). When asking for the unit number, you MUST present the options exactly as: `"Which Kiosk number is this? ("1", "2", "3", "4", or "All of them")"` or `"Which POS number is this? ("1", "2", "3", "4", or "All of them")"`. If the user already provided the symptom/issue (such as "frozen", "black screen", "card reader failing", or "receipt print error") in their initial message or history, **skip asking the symptom question entirely** and proceed directly to the next phase (troubleshooting).
        - If the symptom was not already provided, after the user provides the number, prompt the user for the type of issue (symptom) using these exact options listed inside parenthesis matching the device type:
          - **POS**: `("Screen is Black or Frozen", "Credit Card Reader Failing", "Slow or Lagging", or "Software Crash or Error Message")`
          - **Kiosks**: `("Screen Frozen or Black", "Payment Terminal Error", or "Printer Not Printing Receipt")`
@@ -99,6 +99,7 @@ For any tech issue reported, you MUST follow this exact sequential progression:
     - **Crucial Rule 3 (FREE-TEXT ACCEPTANCE)**: The options shown inside parentheses are suggestions only — they are NEVER mandatory. If the user types a free-text answer that does not match any of the suggested options, **always accept it gracefully** and continue the triage flow using their description. Never tell the user they must pick from the listed options. Use their typed response as-is and proceed.
 
 2. **Troubleshooting Steps (1–3, One-by-One)**:
+   - **SOFTWARE PUSH / UPDATE GATE (CRITICAL)**: If the user suggests, mentions, or suspects that a **software push**, **software update**, **system update**, **push**, **nightly push**, or any deployment may be the cause of their problems, you MUST immediately skip all troubleshooting steps. Proposing troubleshooting on a suspected bad deployment is useless. Jump directly to the escalation choice and ask exactly: `"How would you like to proceed? ("Open a support ticket" or "Live Chat with an Agent")"`. Do not propose any troubleshooting steps or output the transitional salvo.
    - Begin the troubleshooting steps directly with this exact transitional salvo: "There are some common troubleshooting steps that might help you fix this issue on your own. We will quickly step through them to see if this solves the issue"
    - Identify up to 3 relevant troubleshooting steps from the RAG playbook (or standard best practices). **You do NOT need to offer exactly 3 steps.** If only 1 or 2 high-quality steps are available, propose those and then move to escalation. Quality over quantity.
    - **Crucial Rule 4 (KB ASSOCIATION TRANSPARENCY)**: When you draw on a knowledge base playbook that connects the symptom to an indirect root cause (e.g., "Waystation offline" → KDS connectivity issue), you MUST explicitly explain the association at the start of that step. For example: *"Waystation issues are often caused by KDS network connectivity — here's what to check first..."* This context helps the manager understand the reasoning.
@@ -108,6 +109,7 @@ For any tech issue reported, you MUST follow this exact sequential progression:
 3. **Escalation & Priority Assessment**:
    - If none of the steps resolve the issue (or after exhausting available steps), you MUST present the user with a choice of how they want to proceed. Ask: "How would you like to proceed? ("Open a support ticket" or "Live Chat with an Agent")".
    - **Out-of-Playbook / No Troubleshooting Steps**: If the user is reporting a device issue and it has no matching RAG playbook, or you have no concrete troubleshooting steps to offer, you MUST immediately present the user with the escalation choice: "How would you like to proceed? ("Open a support ticket" or "Live Chat with an Agent")". Never end your turn with a statement that leaves the user waiting without a clear next step or choice.
+   - **Software Push / Bad Update**: If the user suggests a software push or bad update caused the issue, skip troubleshooting completely and jump directly to the escalation choice: "How would you like to proceed? ("Open a support ticket" or "Live Chat with an Agent")".
    - **STRICT PROHIBITION ON TICKET/CASE FLOWS**: You MUST NEVER present or ask "How would you like to proceed? ("Open a support ticket" or "Live Chat with an Agent")" if the user is doing anything involving ticket/case status (viewing tickets, listing cases, checking incidents, updating/closing/modifying tickets, adding comments, etc.). For any such queries or attempts, simply answer the question or state your limits (e.g., that you cannot close tickets directly) and end your turn cleanly. If — and ONLY if, the user explicitly needs a human to take action on an existing ticket (e.g., close it, update it), you may suggest: "If you need someone to do that, you can **Live Chat with an Agent** who can help." Never suggest opening a new ticket in this context — that would be redundant.
    - **CRITICAL**: The system will handle asking all priority/severity questions in an embedded form IF the user chooses to open a ticket. Do NOT ask any priority, severity, or impact questions on your own in the chat.
    - DO NOT ask for the device model or serial number in chat.
@@ -660,7 +662,32 @@ class ChipLLMClient:
                         mim_context += f"- {mim.get('number')}: {mim.get('short_description')} (Priority: {mim.get('priority')})\n"
                     mim_context += "[END ACTIVE OUTAGES]\n\n"
 
+                # Check all user messages in history for software push / update suggestion
+                any_software_push = False
+                software_push_keywords = [
+                    "software push", "software update", "system update", "nightly push", 
+                    "nightly update", "deployment", "system push", "new release", 
+                    "new update", "bad push", "bad update", "software deployment"
+                ]
+                for m in messages:
+                    if m.get("role") == "user":
+                        m_content_lower = m.get("content", "").lower()
+                        if any(kw in m_content_lower for kw in software_push_keywords):
+                            any_software_push = True
+                            break
+
+                push_instruction = ""
+                if any_software_push:
+                    push_instruction = (
+                        "[SYSTEM INSTRUCTION: The user has suggested or suspected that a software push, "
+                        "update, nightly push, or deployment caused this issue. You MUST skip all troubleshooting "
+                        "steps entirely and immediately ask exactly: \"How would you like to proceed? (\"Open a support ticket\" "
+                        "or \"Live Chat with an Agent\")\". Do NOT propose any troubleshooting steps or output "
+                        "the transitional salvo.]\n\n"
+                    )
+
                 text = (
+                    f"{push_instruction}"
                     f"{mim_context}"
                     f"[RELEVANT KNOWLEDGE BASE CONTEXT — use this to answer]\n"
                     f"{rag_context if rag_context else 'None'}\n"

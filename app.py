@@ -1488,7 +1488,7 @@ def get_choices_from_message(content: str) -> list[str]:
         "which pos number", "which kiosk number", "which device number", "which unit number",
         "what # device", "what number", "device number is exper", "number is exper"
     ]):
-        return ["1", "2", "3", "4"]
+        return ["1", "2", "3", "4", "All of them"]
 
     # 4. Explicit paren-bounded list of options
     match_paren = re.search(r"\(([^)]+)\)\s*\??\s*$", content.strip())

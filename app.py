@@ -25,7 +25,39 @@ import streamlit as st
 
 from guardrails import check_guardrails, is_greeting_or_small_talk, is_cafe_issue, is_ticket_status_lookup_intent
 from knowledge_base import retrieve_context
-from llm_client import ChipLLMClient, extract_ticket_metadata
+from llm_client import ChipLLMClient, extract_ticket_metadata, set_alert_visibility
+
+def check_and_update_mim_state():
+    """
+    Checks if there are active MIMs, initializes the dismissal & last seen states,
+    and resets the user's dismissal state if the backend metadata of an active MIM has changed.
+    """
+    if "mim_dismissed" not in st.session_state:
+        st.session_state.mim_dismissed = {}
+    if "mim_last_seen_metadata" not in st.session_state:
+        st.session_state.mim_last_seen_metadata = {}
+        
+    active_mims = st.session_state.get("active_mims", [])
+    for mim in active_mims:
+        norm_id = mim["number"].upper().strip()
+        current_metadata = {
+            "short_description": mim.get("short_description", ""),
+            "description": mim.get("description", ""),
+            "priority": mim.get("priority", "")
+        }
+        
+        last_seen = st.session_state.mim_last_seen_metadata.get(norm_id)
+        if last_seen:
+            # If any of the metadata has changed, override the dismissal state
+            if (last_seen.get("short_description") != current_metadata["short_description"] or
+                last_seen.get("description") != current_metadata["description"] or
+                last_seen.get("priority") != current_metadata["priority"]):
+                
+                st.session_state.mim_dismissed[norm_id] = False
+                logger.info("Incident %s metadata updated on the backend. Overriding user dismissal state.", norm_id)
+                
+        # Save or update the last seen metadata
+        st.session_state.mim_last_seen_metadata[norm_id] = current_metadata
 
 # ---------------------------------------------------------------------------
 # Store authentication config
@@ -560,6 +592,7 @@ if "active_mims" not in st.session_state:
     from mocks.servicenow import get_store_mims
     st.session_state.active_mims = get_store_mims(st.session_state.active_store)
     logger.info("Loaded default store MIMs: %d MIMs.", len(st.session_state.active_mims))
+check_and_update_mim_state()
 if "ticket_collection_active" not in st.session_state:
     st.session_state.ticket_collection_active = False
 if "ticket_collection_is_agent" not in st.session_state:
@@ -2986,6 +3019,7 @@ def load_store_context():
     from mocks.servicenow import get_store_tickets, get_store_mims
     st.session_state.active_tickets = get_store_tickets(store_id)
     st.session_state.active_mims = get_store_mims(store_id)
+    check_and_update_mim_state()
     logger.info("Active store changed to %s. Loaded %d tickets and %d MIMs.", store_id, len(st.session_state.active_tickets), len(st.session_state.active_mims))
     st.session_state.messages.append({
         "role": "assistant",
@@ -3015,7 +3049,25 @@ with h_col1:
     )
 
 with h_col2:
-    col_store, col_metric = st.columns([1.0, 1.0], gap="small")
+    active_mims = st.session_state.get("active_mims", [])
+    has_dismissed_mim = False
+    dismissed_mim_id = None
+    
+    if active_mims:
+        if "mim_dismissed" not in st.session_state:
+            st.session_state.mim_dismissed = {}
+        for mim in active_mims:
+            norm_id = mim["number"].upper().strip()
+            if st.session_state.mim_dismissed.get(norm_id, False):
+                has_dismissed_mim = True
+                dismissed_mim_id = norm_id
+                break
+
+    if has_dismissed_mim:
+        col_store, col_metric, col_mim = st.columns([1.0, 1.0, 0.4], gap="small")
+    else:
+        col_store, col_metric = st.columns([1.0, 1.0], gap="small")
+
     with col_store:
         selected_store = st.selectbox(
             "Header Store select",
@@ -3056,12 +3108,24 @@ with h_col2:
             """,
             unsafe_allow_html=True
         )
+    if has_dismissed_mim:
+        with col_mim:
+            restore_clicked = st.button("⚠️", key="restore_mim_button", help="Click to restore Major Incident Outage banner")
+            if restore_clicked:
+                st.session_state.mim_dismissed[dismissed_mim_id] = False
+                st.rerun()
 
 # ---------------------------------------------------------------------------
 # Major Outages / MIMs Alert
 # ---------------------------------------------------------------------------
 if st.session_state.get("active_mims"):
     for mim in st.session_state.active_mims:
+        norm_id = mim['number'].upper().strip()
+        if "mim_dismissed" not in st.session_state:
+            st.session_state.mim_dismissed = {}
+        if st.session_state.mim_dismissed.get(norm_id, False):
+            continue
+
         mim_id = mim['number'].replace("MIM", "")
         mim_title = mim['short_description']
         with st.container(border=True):
@@ -3075,11 +3139,19 @@ if st.session_state.get("active_mims"):
                     key=f"report_mim_button_{mim_id}",
                     use_container_width=True
                 )
+                dismiss_clicked = st.button(
+                    "Dismiss",
+                    key=f"dismiss_mim_button_{mim_id}",
+                    use_container_width=True
+                )
             if btn_clicked:
                 import logging
                 logging.info(f"[MOCK TRACKING] Store {st.session_state.active_store} reported experiencing MIM {mim['number']}")
                 print(f"[MOCK TRACKING] Store {st.session_state.active_store} reported experiencing MIM {mim['number']}")
                 st.success("Linked to master incident.")
+            if dismiss_clicked:
+                st.session_state.mim_dismissed[norm_id] = True
+                st.rerun()
 
 # ---------------------------------------------------------------------------
 # Status Update Success Alert

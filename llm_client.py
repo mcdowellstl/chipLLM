@@ -583,6 +583,42 @@ def update_case_status(case_id: str, new_status: str) -> str:
         return f"An error occurred while updating the case status: {e}"
 
 
+def set_alert_visibility(incident_id: str, visible: bool, scope: str = "session") -> str:
+    """
+    Sets the visibility of a major incident alert/banner (e.g. 'MIM-0008472' or 'MIM0008472').
+
+    Args:
+        incident_id: The unique incident identifier (e.g., 'MIM-0008472').
+        visible: Whether the alert/banner should be visible (True) or hidden/minimized (False).
+        scope: The scope of visibility update. Defaults to 'session'.
+
+    Returns:
+        str: A direct confirmation message.
+    """
+    import streamlit as st
+    import logging
+
+    local_logger = logging.getLogger("chipLLM.set_alert_visibility")
+    local_logger.info("=== TOOL CALL: set_alert_visibility ===")
+    local_logger.info("incident_id: %s, visible: %s, scope: %s", incident_id, visible, scope)
+
+    norm_id = incident_id.strip().upper()
+    # Normalize ID to start with MIM- or MIM
+    if not norm_id.startswith("MIM"):
+        norm_id = "MIM-" + norm_id
+    elif norm_id.startswith("MIM") and not norm_id.startswith("MIM-"):
+        rest = norm_id[3:]
+        norm_id = "MIM-" + rest
+
+    if "mim_dismissed" not in st.session_state:
+        st.session_state.mim_dismissed = {}
+
+    st.session_state.mim_dismissed[norm_id] = not visible
+    confirm_msg = f"Successfully set alert visibility for {norm_id} to {visible}."
+    local_logger.info(confirm_msg)
+    return confirm_msg
+
+
 
 class ChipLLMClient:
     """
@@ -615,10 +651,19 @@ class ChipLLMClient:
             text = msg["content"]
 
             # Inject RAG context into the most recent user message
-            if rag_context and i == len(messages) - 1 and role == "user":
+            if i == len(messages) - 1 and role == "user":
+                mim_context = ""
+                active_mims = st.session_state.get("active_mims", [])
+                if active_mims:
+                    mim_context = "[ACTIVE OUTAGES / INCIDENTS]\n"
+                    for mim in active_mims:
+                        mim_context += f"- {mim.get('number')}: {mim.get('short_description')} (Priority: {mim.get('priority')})\n"
+                    mim_context += "[END ACTIVE OUTAGES]\n\n"
+
                 text = (
+                    f"{mim_context}"
                     f"[RELEVANT KNOWLEDGE BASE CONTEXT — use this to answer]\n"
-                    f"{rag_context}\n"
+                    f"{rag_context if rag_context else 'None'}\n"
                     f"[END CONTEXT]\n\n"
                     f"User question: {text}"
                 )
@@ -649,7 +694,7 @@ class ChipLLMClient:
             temperature=0.3,
             max_output_tokens=1024,
             top_p=0.9,
-            tools=[get_active_tickets, get_case_details, add_case_comment, escalate_case, get_case_status, update_case_status],
+            tools=[get_active_tickets, get_case_details, add_case_comment, escalate_case, get_case_status, update_case_status, set_alert_visibility],
             automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
         )
 
@@ -682,6 +727,8 @@ class ChipLLMClient:
                     result = get_case_status(**args)
                 elif tc.name == "update_case_status":
                     result = update_case_status(**args)
+                elif tc.name == "set_alert_visibility":
+                    result = set_alert_visibility(**args)
                 else:
                     result = {"error": f"Unknown tool: {tc.name}"}
                 function_responses.append(

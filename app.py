@@ -721,18 +721,23 @@ def sync_triage_from_messages() -> None:
             elif re.search(r"\botp\b", q_content):
                 summary_dict["Are you OTP or OTP cer"] = ans_clean.capitalize()
 
-    # Seed the "Issue Description" with the raw first user message if not already captured from Q&A
+    # Seed the "Issue Description" with the AI-generated summary if it is valid (not "Unknown"), otherwise fallback to first non-lookup user message
     if "Issue Description" not in summary_dict or summary_dict["Issue Description"] in ["Unknown", ""]:
-        # Prefer the raw first user message — it's always more descriptive than the AI summary
-        first_user_raw = ""
-        for m in messages:
-            if m["role"] == "user":
-                first_user_raw = m["content"].replace("**", "").replace("`", "").strip()
-                break
-        if first_user_raw:
-            summary_dict["Issue Description"] = first_user_raw[:200]  # cap at 200 chars
+        ai_desc = st.session_state.get("ai_issue_description", "Unknown")
+        if ai_desc and ai_desc.lower() != "unknown":
+            summary_dict["Issue Description"] = ai_desc
         else:
-            summary_dict["Issue Description"] = st.session_state.get("ai_issue_description", "Unknown")
+            first_user_raw = ""
+            for m in messages:
+                if m["role"] == "user":
+                    m_content = m["content"].strip()
+                    if not is_ticket_status_lookup_intent(m_content) and len(m_content) > 3:
+                        first_user_raw = m["content"].replace("**", "").replace("`", "").strip()
+                        break
+            if first_user_raw:
+                summary_dict["Issue Description"] = first_user_raw[:200]  # cap at 200 chars
+            else:
+                summary_dict["Issue Description"] = "Unknown"
 
     # Pre-populate Device Type and Asset Number based strictly on USER messages to avoid assistant prompts polluting the parsing
     user_msgs = [m["content"] for m in messages if m["role"] == "user"]
@@ -2690,13 +2695,19 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                 _asset_num = st.session_state.current_triage.get("Asset Number", "")
                 _issue_desc = st.session_state.current_triage.get("Issue Description", "")
 
-                # Prefer first user message as the issue description if triage captured only the device name
+                # Prefer AI description if triage captured only the device name, then fallback to first non-lookup user message
                 _bare_device_words = {"pos", "kiosk", "kvs", "kds", "bos", "printer", "unknown", "hardware", "software", "device", ""}
                 if not _issue_desc or _issue_desc.lower().strip() in _bare_device_words:
-                    for _m in get_current_flow_messages():
-                        if _m["role"] == "user":
-                            _issue_desc = _m["content"].replace("**", "").replace("`", "").strip()
-                            break
+                    ai_desc = st.session_state.get("ai_issue_description", "Unknown")
+                    if ai_desc and ai_desc.lower() != "unknown":
+                        _issue_desc = ai_desc
+                    else:
+                        for _m in get_current_flow_messages():
+                            if _m["role"] == "user":
+                                _m_content = _m["content"].strip()
+                                if not is_ticket_status_lookup_intent(_m_content) and len(_m_content) > 3:
+                                    _issue_desc = _m["content"].replace("**", "").replace("`", "").strip()
+                                    break
 
                 # Resolve device base identifier
                 if _asset_num and _asset_num not in ("Unknown", ""):

@@ -729,47 +729,34 @@ class ChipLLMClient:
         Generate a concise, informative description of the technical issue/symptom
         based on the active conversation history. (Max 10 words, direct summary).
         """
-        contents = []
+        # Format conversation history as a single text block
+        history_text = ""
         for msg in messages:
-            role = "user" if msg["role"] == "user" else "model"
-            text = msg["content"]
-            contents.append(
-                genai_types.Content(
-                    role=role,
-                    parts=[genai_types.Part(text=text)],
-                )
-            )
+            role = "Manager" if msg["role"] == "user" else "Chip"
+            history_text += f"{role}: {msg['content']}\n"
 
         prompt = (
-            "You are a tech support assistant. Review the above conversation between a restaurant manager and "
-            "technical support. Extract the specific device/system and its technical issue/symptom.\n"
-            "Generate a highly concise, informative description summarizing this issue (maximum 8-10 words, "
-            "under 10 words total).\n"
-            "Strictly follow these rules:\n"
-            "1. Do not use pleasantries, greetings, or filler words (e.g., do not say 'The manager reports...', "
-            "'Hi', 'Hello', etc.).\n"
-            "2. Focus only on the technical symptom and device (e.g., 'Kiosk #3 screen is frozen', 'Receipt printer paper jam', 'POS not printing receipt').\n"
-            "3. If the user hasn't described any issue yet or it is completely unclear, return exactly 'Unknown'.\n"
-            "4. Do not include quotes, periods, or other punctuation around the description.\n"
-            "5. Capitalize the first letter of the description.\n"
-            "Now, output ONLY the final description text."
-        )
-
-        contents.append(
-            genai_types.Content(
-                role="user",
-                parts=[genai_types.Part(text=prompt)],
-            )
+            f"You are a tech support assistant. Review the following conversation between a restaurant manager and technical support:\n\n"
+            f"{history_text}\n"
+            f"Extract the specific device/system and its technical issue/symptom.\n"
+            f"Generate a highly concise, informative description summarizing this issue (maximum 8-10 words, under 10 words total).\n"
+            f"Strictly follow these rules:\n"
+            f"1. Do not use pleasantries, greetings, or filler words (e.g., do not say 'The manager reports...', 'Hi', 'Hello', etc.).\n"
+            f"2. Focus only on the technical symptom and device (e.g., 'Kiosk #3 screen is frozen', 'Receipt printer paper jam', 'POS not printing receipt').\n"
+            f"3. If the user hasn't described any issue yet or it is completely unclear, return exactly 'Unknown'.\n"
+            f"4. Do not include quotes, periods, or other punctuation around the description.\n"
+            f"5. Capitalize the first letter of the description.\n"
+            f"Now, output ONLY the final description text."
         )
 
         config = genai_types.GenerateContentConfig(
             temperature=0.0,
-            max_output_tokens=32,
+            max_output_tokens=128,
         )
 
         response = self._client.models.generate_content(
             model=self._model,
-            contents=contents,
+            contents=[prompt],
             config=config,
         )
 

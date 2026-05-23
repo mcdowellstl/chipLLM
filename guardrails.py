@@ -210,7 +210,10 @@ def is_cafe_issue(user_message: str) -> bool:
     cafe_keywords = {
         "mccafe", "cafe", "coffee", "espresso", "latte", "cappuccino", "frappe",
         "macchiato", "americano", "beverage", "brewer", "bunnomatic", "blender",
-        "drink", "frappuccino", "tea", "caffeine"
+        "drink", "frappuccino", "tea", "caffeine",
+        # Fountain soda / beverage dispensing equipment
+        "soda", "fountain", "carbonation", "carbonated", "syrup", "dispenser",
+        "ice machine", "ice maker", "slushie", "slush", "frozen drink",
     }
     
     # Check word boundaries using split
@@ -219,7 +222,12 @@ def is_cafe_issue(user_message: str) -> bool:
         return True
         
     # Check multi-word phrases explicitly
-    multi_word_phrases = ["iced coffee", "hot chocolate", "iced tea"]
+    multi_word_phrases = [
+        "iced coffee", "hot chocolate", "iced tea",
+        "fountain soda", "soda machine", "fountain machine",
+        "ice machine", "ice maker", "frozen drink", "soda dispenser",
+        "beverage dispenser", "carbonation machine",
+    ]
     if any(phrase in cleaned for phrase in multi_word_phrases):
         return True
         

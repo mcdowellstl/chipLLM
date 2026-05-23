@@ -3403,6 +3403,12 @@ if user_input:
         reset_triage_state()
         st.session_state.ticket_collection_active = False
         st.session_state.manual_ticket_flow = False
+        
+        # Clear active_case_id context if this is a general/bulk list query (does not contain a specific case ID)
+        import re as _re
+        if not _re.search(r"\b(?:inc|rc00|rc)[-_]?\d+\b", lower_input):
+            st.session_state.active_case_id = None
+            logger.info("Cleared active_case_id context for general/bulk query.")
 
     # Detect cafe issues and route immediately to live human agent
     if is_cafe_issue(user_input) and not st.session_state.get("escalated", False):

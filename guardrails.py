@@ -56,10 +56,10 @@ _ALL_RESTRICTED: set[str] = (
 )
 
 _REFUSAL_RESPONSE = (
-    "⛔ **Topic restricted.** Please ask a store-related support tech question.\n\n"
-    "Hi there! I'm Chip, your restaurant tech support engineer. I focus exclusively on restaurant technology "
-    "like POS terminals, receipt printers, self-order kiosks, and kitchen display systems (KDS/KVS). "
-    "Let me know what device is acting up or what error code you're seeing, and we'll get it sorted out!"
+    "Look, I've spent the last ten years trying to convince grease-covered receipt printers not to commit suicide "
+    "during the Friday dinner rush. I don't know anything about sports, weather, politics, or trivia—my entire "
+    "world exists in a 100-degree kitchen. Let's steer this back to restaurant tech: if you've got a POS register, "
+    "a kitchen screen, or a printer that is currently acting up, let me know, and we'll get it sorted out!"
 )
 
 # ---------------------------------------------------------------------------

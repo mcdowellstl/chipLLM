@@ -23,7 +23,7 @@ logger = logging.getLogger("chipLLM")
 
 import streamlit as st
 
-from guardrails import check_guardrails, is_greeting_or_small_talk, is_cafe_issue, is_ticket_status_lookup_intent
+from guardrails import check_guardrails, is_greeting_or_small_talk, is_cafe_issue, is_ticket_status_lookup_intent, check_assistant_escalation_intent
 from knowledge_base import retrieve_context
 from llm_client import ChipLLMClient, extract_ticket_metadata, set_alert_visibility
 
@@ -3893,9 +3893,9 @@ if user_input:
             logger.info("Post-response escalation check: user_input='%s', is_ticket_status_lookup=%s", user_input, is_lookup)
             if not is_lookup:
                 if "how would you like to proceed" not in full_response.lower():
-                    post_guard = check_guardrails(full_response)
-                    logger.info("  post_guard.escalation_triggered=%s for full_response", post_guard.escalation_triggered)
-                    if post_guard.escalation_triggered:
+                    escalation_triggered = check_assistant_escalation_intent(full_response)
+                    logger.info("  check_assistant_escalation_intent=%s for full_response", escalation_triggered)
+                    if escalation_triggered:
                         start_escalation_triage(append_welcome=False)
             else:
                 logger.info("  Bypassing post-response escalation check entirely because user input is a ticket status lookup.")

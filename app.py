@@ -3886,19 +3886,7 @@ if user_input:
         if rag_title:
             st.session_state.rag_hits[msg_idx] = rag_title
 
-        # --- Post-response: check if response triggers escalation -------------
-        if not st.session_state.ticket_collection_active and not st.session_state.get("escalation_triage_active", False):
-            # If the user's input was a ticket status lookup, NEVER auto-escalate or start priority triage forms!
-            is_lookup = is_ticket_status_lookup_intent(user_input)
-            logger.info("Post-response escalation check: user_input='%s', is_ticket_status_lookup=%s", user_input, is_lookup)
-            if not is_lookup:
-                if "how would you like to proceed" not in full_response.lower():
-                    escalation_triggered = check_assistant_escalation_intent(full_response)
-                    logger.info("  check_assistant_escalation_intent=%s for full_response", escalation_triggered)
-                    if escalation_triggered:
-                        start_escalation_triage(append_welcome=False)
-            else:
-                logger.info("  Bypassing post-response escalation check entirely because user input is a ticket status lookup.")
+
 
         # If they are connected and chat turns >= 2, trigger ticket creation flow
         if is_connected_stage and st.session_state.get("live_agent_chat_turns", 0) >= 2:

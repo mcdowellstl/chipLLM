@@ -1834,9 +1834,28 @@ def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
     append context-appropriate instruction suffixes, and wrap the troubleshooting salvo in a colored box.
     """
     import re
+    import streamlit as st
 
-    # Skip processing for Chip's live agent messages — render verbatim
-    if content.startswith("Hello, my name is Chip."):
+    # Skip processing for all live agent messages — render verbatim
+    live_agent_names = ["Alex", "Taylor", "Jordan", "Morgan", "Casey", "Robin", "Pat", "Jamie", "Sam", "Chris"]
+    is_live_agent_msg = False
+    
+    if msg_idx is None:
+        # During streaming of the live agent response
+        if st.session_state.get("escalation_stage") == "connected":
+            is_live_agent_msg = True
+    else:
+        messages = st.session_state.get("messages", [])
+        for idx, msg in enumerate(messages):
+            msg_content = msg.get("content", "")
+            if msg.get("role") == "assistant":
+                # Check if this message or any message before it in the history was the live agent greeting
+                if any(f"Hello, my name is {name}." in msg_content for name in live_agent_names) and "reviewing your case now" in msg_content:
+                    if msg_idx >= idx:
+                        is_live_agent_msg = True
+                        break
+
+    if is_live_agent_msg:
         return content
 
     # Skip processing for the case details summary block

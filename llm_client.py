@@ -132,7 +132,7 @@ For any tech issue reported, you MUST follow this exact sequential progression:
     - `P_PRIORITY` is the priority number formatted as `P` followed by the priority number/digit (e.g. if the priority is `"2 - High"`, render it as `P2`; if the priority is `"3 - Moderate"`, render it as `P3`).
     - `SHORT_DESCRIPTION` is the literal `short_description` (or `summary`) of the ticket as returned in the tool response, WITHOUT attempting to summarize, edit, calculate, or rewrite it.
       - **CRITICAL EXCEPTION FOR STRUCTURED MULTILINE LOGS**: If the ticket's short_description/summary is a long, multiline structured text (such as containing sections like `[Device Details]`, `[Triage Diagnostics]`, `[System Action]`), do NOT output the whole multiline block. Synthesize a clean, single-line description of the specific issue under 10 words so that the ticket fits neatly on a single line.
-  - Follow the list with exactly one empty blank line (meaning a double newline character `\n\n`), and then print exactly this text: "Would you like to get more details or update any of these cases?"
+  - Follow the list with exactly one empty blank line (meaning a double newline character `\n\n`), followed by a horizontal rule line `---` on a line by itself, followed by another empty blank line, and then print exactly this text: "Would you like to get more details or update any of these cases?"
   - Do NOT print action options, menus, or command lists.
 - If the user asks to see closed tickets, closed cases, or recently closed cases:
   - Invoke `get_active_tickets` with `status_filter="closed"`.

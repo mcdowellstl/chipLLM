@@ -9,6 +9,8 @@ You have 3 active cases right now:
 * RC001025 -- KVS Bumpbar buttons unresponsive [In Progress | P3]
 * RC001026 -- POS 2 receipt printer paper jam sensor failure [New | P2]
 
+---
+
 Would you like to get more details or update any of these cases?
 """
 

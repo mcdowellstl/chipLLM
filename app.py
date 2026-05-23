@@ -1005,7 +1005,10 @@ def parse_status_change_intent(text: str) -> tuple[bool, str | None]:
     verbs = ["change", "update", "modify", "set", "transition", "switch", "patch", "close"]
     
     # Simple check: does user mention status change or closing?
-    is_intent = any(v in lower_text for v in verbs) and any(k in lower_text for k in keywords)
+    # Enforce word boundary matching
+    has_verb = any(re.search(r"\b" + re.escape(v) + r"\b", lower_text) for v in verbs)
+    has_keyword = any(re.search(r"\b" + re.escape(k) + r"\b", lower_text) for k in keywords)
+    is_intent = has_verb and has_keyword
     
     # Or does it match phrases like "change status", "update status", "modify status", "set status", 
     # "close case", "close ticket", "close the case", "close the ticket", "update case status", "update ticket status"
@@ -3460,6 +3463,10 @@ if user_input:
             })
             st.session_state.active_case_id = resolved_case_id
             st.rerun()
+        else:
+            # User replied with something other than a case ID, assume they are moving on
+            last_assistant_msg["awaiting_case_id_for_status_change"] = False
+            logger.info("Cleared awaiting_case_id_for_status_change state as user moved on.")
 
     # Intercept status change updates
     is_status_intent, status_ticket_id = parse_status_change_intent(user_input)

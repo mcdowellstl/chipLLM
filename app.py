@@ -1353,7 +1353,9 @@ def get_choices_from_message(content: str) -> list[str]:
             or "what would you like to do next" in content_lower
             or "your comment has been added" in content_lower
             or "has been escalated" in content_lower
-            or "escalation count is now" in content_lower):
+            or "escalation count is now" in content_lower
+            or "servicenow ticket generated successfully" in content_lower
+            or "servicenow parameter" in content_lower):
         return []
 
     # 0. Case options prompt bubbles - BANNED under UI Reboot
@@ -1768,6 +1770,10 @@ def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
 
     # Skip processing for the case details summary block
     if "Case Details Collected So Far" in content:
+        return content
+
+    # Skip processing for the ticket success/generated block
+    if "ServiceNow Ticket Generated Successfully!" in content or "ServiceNow Parameter" in content:
         return content
 
     # 0. Case detail view — reformat deterministically with \n\n spacing

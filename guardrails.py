@@ -290,38 +290,3 @@ def is_ticket_status_lookup_intent(text: str) -> bool:
     # Any other mention of ticket/case/status/incidents is a lookup/view attempt!
     return True
 
-
-def check_assistant_escalation_intent(response: str) -> bool:
-    """
-    Check if Chip's response indicates he is initiating an escalation, transfer, or ticket.
-    Avoids false positives from generic words like 'human', 'agent', 'manager' in casual banter.
-    """
-    resp_lower = response.lower()
-    
-    # 1. Clear ticket creation actions
-    if any(phrase in resp_lower for phrase in [
-        "open a ticket", "create a ticket", "submit a ticket", "open a support ticket",
-        "ticket created", "ticket opened", "ticket has been opened", "ticket has been created",
-        "servicenow ticket", "genesys ticket"
-    ]):
-        return True
-        
-    # 2. Clear escalation or transfer actions
-    if any(phrase in resp_lower for phrase in [
-        "escalate this", "escalating this", "escalate the issue", "escalating the issue",
-        "escalate to a live", "escalate to a support",
-        "transfer you to", "transferred over to", "connect you with a live", "connect you to a live",
-        "connect you to support", "transfer you to support"
-    ]):
-        return True
-        
-    # 3. Explicit references to Genesys, ServiceNow, or escalation flow in an action context
-    if any(phrase in resp_lower for phrase in [
-        "entering the ticket", "transfer queue", "launch below", "embedded form"
-    ]):
-        return True
-        
-    return False
-
-
-

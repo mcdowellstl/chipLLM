@@ -23,7 +23,7 @@ logger = logging.getLogger("chipLLM")
 
 import streamlit as st
 
-from guardrails import check_guardrails, is_greeting_or_small_talk, is_cafe_issue, is_ticket_status_lookup_intent, check_assistant_escalation_intent
+from guardrails import check_guardrails, is_greeting_or_small_talk, is_cafe_issue, is_ticket_status_lookup_intent
 from knowledge_base import retrieve_context
 from llm_client import ChipLLMClient, extract_ticket_metadata, set_alert_visibility
 

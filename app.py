@@ -2810,7 +2810,8 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                 f"```text\n"
                 f"{meta['description']}\n"
                 f"```\n\n"
-                f"An engineer from the **{meta['assignment_group']}** group has been dispatched and is reviewing this ticket."
+                f"An engineer from the **{meta['assignment_group']}** group has been dispatched and is reviewing this ticket.\n\n"
+                f"Is there anything else I can do for you?"
             )
             
             st.session_state.messages.append({
@@ -3266,39 +3267,7 @@ if st.session_state.get("live_agent_pending_question", False):
         st.rerun()
 
 
-# ---------------------------------------------------------------------------
-# Restart Chat button (shown after ticket submission)
-# ---------------------------------------------------------------------------
-if st.session_state.get("show_restart_chat_btn", False) and not st.session_state.ticket_collection_active:
-    st.markdown(
-        """
-        <style>
-        div.restart-btn-marker + div.stButton > button {
-            background: linear-gradient(135deg, #1a1d28 0%, #1f2333 100%) !important;
-            color: var(--text-accent) !important;
-            border: 1.5px solid rgba(255, 199, 44, 0.4) !important;
-            font-weight: 700 !important;
-            font-size: 14px !important;
-            height: 46px !important;
-            border-radius: 12px !important;
-            margin-top: 8px !important;
-            margin-bottom: 16px !important;
-            letter-spacing: 0.3px !important;
-            transition: all 0.2s ease !important;
-        }
-        div.restart-btn-marker + div.stButton > button:hover {
-            background: rgba(255, 199, 44, 0.08) !important;
-            border-color: rgba(255, 199, 44, 0.8) !important;
-            transform: translateY(-1px) !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-    st.markdown("<div class='restart-btn-marker'></div>", unsafe_allow_html=True)
-    if st.button("🔄 Click Here to Restart Chat", use_container_width=True, key="restart_chat_after_ticket"):
-        st.session_state.needs_reset = True
-        st.rerun()
+
 
 # ---------------------------------------------------------------------------
 # Device Detail & Priority Forms (escalation triage flow)

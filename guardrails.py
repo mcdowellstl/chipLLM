@@ -42,7 +42,7 @@ _TRIVIA_KEYWORDS = {
     "trivia", "quiz", "riddle", "joke", "fact", "did you know", "fun fact",
     "history of", "biography", "who invented", "where was", "what year",
     "capital of", "population of", "currency of", "language of",
-    "recipe", "cooking", "baking", "movie", "film", "actor", "actress",
+    "movie", "film", "actor", "actress",
     "music", "song", "album", "artist", "book", "novel", "author",
     "travel", "vacation", "tourism", "hotel", "flight", "airline",
     "stock market", "crypto", "bitcoin", "investment",

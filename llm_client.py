@@ -273,29 +273,49 @@ When a user asks a **Restaurant Operations & Food Safety** question, do NOT trig
 - Sarcastic, dry, witty, restaurant-literate, yet ultimately helpful, direct, and empathetic. You understand the manager is stressed — use humor to ease the pain, then fix the gear fast."""
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=300)
 def get_system_instructions() -> str:
     """
-    Attempts to read system instruction/persona from the GCS bucket.
-    Falls back to the hardcoded SYSTEM_PROMPT in case of any failure.
+    Treats SYSTEM_INSTRUCTIONS_BUCKET as a directory of persona/config files.
+    Iterates all .txt and .md blobs, sorts them alphabetically for a
+    deterministic merge order, and concatenates into a single master string.
+    Falls back to the hardcoded SYSTEM_PROMPT on any failure or empty bucket.
     """
-    bucket_name = "chipllm-instructions"
-    blob_name = "system_instruction.txt"
+    bucket_name = os.environ.get("SYSTEM_INSTRUCTIONS_BUCKET", "chipllm-instructions")
+    section_sep = "\n\n---NEW_SECTION---\n\n"
     try:
-        from google.cloud import storage
-        storage_client = storage.Client()
-        bucket = storage_client.bucket(bucket_name)
-        blob = bucket.blob(blob_name)
-        if blob.exists():
-            instruction_text = blob.download_as_text()
-            if instruction_text and instruction_text.strip():
-                return instruction_text.strip()
+        from google.cloud import storage as _storage
+        client = _storage.Client()
+        blobs = sorted(
+            [
+                b for b in client.list_blobs(bucket_name)
+                if b.name.endswith(".txt") or b.name.endswith(".md")
+            ],
+            key=lambda b: b.name,
+        )
+        if not blobs:
+            return SYSTEM_PROMPT
+
+        sections: list[str] = []
+        for blob in blobs:
+            try:
+                text = blob.download_as_text().strip()
+                if text:
+                    sections.append(text)
+            except Exception as blob_err:
+                try:
+                    st.warning(f"Skipping gs://{bucket_name}/{blob.name}: {blob_err}")
+                except Exception:
+                    print(f"Skipping gs://{bucket_name}/{blob.name}: {blob_err}")
+
+        if sections:
+            return section_sep.join(sections)
     except Exception as err:
         try:
-            st.warning(f"Failed to fetch system instructions from gs://{bucket_name}/{blob_name}: {err}")
+            st.warning(f"Failed to load system instructions from gs://{bucket_name}: {err}")
         except Exception:
-            print(f"Failed to fetch system instructions from gs://{bucket_name}/{blob_name}: {err}")
-            
+            print(f"Failed to load system instructions from gs://{bucket_name}: {err}")
+
     return SYSTEM_PROMPT
 
 

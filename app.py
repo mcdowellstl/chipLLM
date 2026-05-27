@@ -278,7 +278,7 @@ html, body, [class*="css"] {
 }
 
 .header-title {
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 800;
   color: #f0f2f8;
   letter-spacing: -0.3px;
@@ -595,9 +595,11 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) {
   box-shadow: none !important;
 }
 
-/* Outage action buttons — use ID selector (1-0-0 specificity) to guarantee
-   this beats the global .stButton > button !important red rule */
-#outage-action-col .stButton > button {
+/* Outage action buttons — :has(#id) on the shared stVerticalBlock parent
+   gives specificity 1-1-1, guaranteed to beat global .stButton 0-1-1 rule.
+   (The marker div is a sibling of the buttons, not their ancestor, so
+    we must target the common parent with :has() rather than using #id directly.) */
+div[data-testid="stVerticalBlock"]:has(#outage-action-col) .stButton > button {
   background: #1e2130 !important;
   border: 1px solid rgba(255,255,255,.12) !important;
   color: #8892a4 !important;
@@ -613,7 +615,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) {
   width: 100% !important;
   transition: background 0.15s, color 0.15s !important;
 }
-#outage-action-col .stButton > button:hover {
+div[data-testid="stVerticalBlock"]:has(#outage-action-col) .stButton > button:hover {
   background: #262b3e !important;
   color: #c0c6d6 !important;
   border-color: rgba(255,255,255,.2) !important;

@@ -539,19 +539,18 @@ html, body, [class*="css"] {
 }
 
 /* Metric button style override */
-div.metric-btn-marker + div.stButton > button {
-  background: rgba(255, 255, 255, 0.06) !important;
+div[data-testid="element-container"]:has(div.metric-btn-marker) + div[data-testid="element-container"] button {
+  background: rgba(255, 255, 255, 0.05) !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
   color: #f0f2f8 !important;
-  font-size: 15px !important;
-  font-weight: 700 !important;
-  padding: 0 10px !important;
-  min-height: 42px !important;
-  height: 42px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 0 12px !important;
+  min-height: 38px !important;
+  height: 38px !important;
   border-radius: 8px !important;
-  line-height: 40px !important;
-  letter-spacing: 0.1px !important;
-  margin-top: 2px !important;
+  line-height: 36px !important;
+  margin-top: 0px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -559,14 +558,81 @@ div.metric-btn-marker + div.stButton > button {
   width: 100% !important;
   box-sizing: border-box !important;
   white-space: nowrap !important;
+  transition: all 0.2s ease !important;
 }
 
-div.metric-btn-marker + div.stButton > button:hover {
+div[data-testid="element-container"]:has(div.metric-btn-marker) + div[data-testid="element-container"] button:hover {
   background: rgba(255, 255, 255, 0.1) !important;
   border: 1px solid rgba(255, 255, 255, 0.2) !important;
   box-shadow: none !important;
-  transform: none !important;
+  transform: translateY(-1px) !important;
 }
+
+/* Active Outage box container & styling */
+div[data-testid="stVerticalBlock"]:has(div.active-outage-box) {
+  border: 1px solid rgba(255, 199, 44, 0.25) !important;
+  background: rgba(255, 199, 44, 0.05) !important;
+  border-radius: 12px !important;
+  padding: 16px 20px !important;
+  max-width: 640px !important;
+  margin: 10px auto 20px auto !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Header inside active outage box */
+.outage-header {
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  color: #ffd97d !important;
+  margin-bottom: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.outage-desc {
+  font-size: 12.5px !important;
+  color: #a0a5b5 !important;
+  line-height: 1.4 !important;
+}
+
+/* Outage box buttons styling overrides */
+div[data-testid="stVerticalBlock"]:has(div.active-outage-box) button {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  min-height: 30px !important;
+  height: 30px !important;
+  border-radius: 8px !important;
+  padding: 0 14px !important;
+  line-height: 28px !important;
+  box-shadow: none !important;
+  transition: all 0.2s ease !important;
+}
+
+/* Match My Store (First button in col_right) */
+div[data-testid="stVerticalBlock"]:has(div.active-outage-box) div[data-testid="column"]:nth-child(2) div[data-testid="element-container"]:nth-child(1) button {
+  background: rgba(255, 199, 44, 0.12) !important;
+  border: 1px solid rgba(255, 199, 44, 0.35) !important;
+  color: #ffc72c !important;
+}
+div[data-testid="stVerticalBlock"]:has(div.active-outage-box) div[data-testid="column"]:nth-child(2) div[data-testid="element-container"]:nth-child(1) button:hover {
+  background: rgba(255, 199, 44, 0.2) !important;
+  border-color: rgba(255, 199, 44, 0.5) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Dismiss (Second button in col_right) */
+div[data-testid="stVerticalBlock"]:has(div.active-outage-box) div[data-testid="column"]:nth-child(2) div[data-testid="element-container"]:nth-child(2) button {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #8892a4 !important;
+}
+div[data-testid="stVerticalBlock"]:has(div.active-outage-box) div[data-testid="column"]:nth-child(2) div[data-testid="element-container"]:nth-child(2) button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  transform: translateY(-1px) !important;
+}
+
 
 /* ── Streamlit default markdown in chat ──────────────────────────────────── */
 .stMarkdown p { margin: 0 0 6px; }
@@ -3253,72 +3319,73 @@ def load_store_context():
 # ---------------------------------------------------------------------------
 
 st.markdown('<div id="header-sentinel"></div>', unsafe_allow_html=True)
-h_col1, h_col2 = st.columns([1.1, 2.1], gap="small")
 
-with h_col1:
+active_mims = st.session_state.get("active_mims", [])
+has_dismissed_mim = False
+dismissed_mim_id = None
+
+if active_mims:
+    if "mim_dismissed" not in st.session_state:
+        st.session_state.mim_dismissed = {}
+    for mim in active_mims:
+        norm_id = mim["number"].upper().strip()
+        if st.session_state.mim_dismissed.get(norm_id, False):
+            has_dismissed_mim = True
+            dismissed_mim_id = norm_id
+            break
+
+# Flat columns layout for perfect alignment and modern spacing
+if has_dismissed_mim:
+    col_logo, col_store, col_metric, col_mim = st.columns([1.3, 1.2, 1.2, 0.3], gap="small", vertical_alignment="center")
+else:
+    col_logo, col_store, col_metric = st.columns([1.4, 1.3, 1.3], gap="medium", vertical_alignment="center")
+
+with col_logo:
     st.markdown(
         f"""
-        <div style="display:flex; align-items:center; gap:10px; height: 100%; margin-top: 2px;">
-            <div style="font-size:24px; background:linear-gradient(135deg, var(--accent) 0%, var(--text-accent) 100%); width:40px; height:40px; border-radius:8px; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 8px var(--accent-glow); flex-shrink:0;">🍔</div>
+        <div style="display:flex; align-items:center; gap:10px; height: 100%; justify-content: flex-start; margin-top: 1px;">
+            <div style="font-size:22px; background:linear-gradient(135deg, var(--accent) 0%, var(--text-accent) 100%); width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 8px var(--accent-glow); flex-shrink:0;">🍔</div>
             <div style="min-width:0;">
-                <div style="font-size:24px; font-weight:800; color:#f0f2f8; line-height:1.0; letter-spacing:-0.5px; padding-bottom: 2px;">ChipLLM</div>
+                <div style="font-size:22px; font-weight:800; color:#f0f2f8; line-height:1.0; letter-spacing:-0.5px;">ChipLLM</div>
             </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-with h_col2:
-    active_mims = st.session_state.get("active_mims", [])
-    has_dismissed_mim = False
-    dismissed_mim_id = None
-    
-    if active_mims:
-        if "mim_dismissed" not in st.session_state:
-            st.session_state.mim_dismissed = {}
-        for mim in active_mims:
-            norm_id = mim["number"].upper().strip()
-            if st.session_state.mim_dismissed.get(norm_id, False):
-                has_dismissed_mim = True
-                dismissed_mim_id = norm_id
-                break
+with col_store:
+    selected_store = st.selectbox(
+        "Header Store select",
+        options=STORE_OPTIONS,
+        index=STORE_OPTIONS.index(st.session_state.active_store) if st.session_state.active_store in STORE_OPTIONS else 0,
+        format_func=lambda x: f"Store: {x}",
+        label_visibility="collapsed",
+        key="header_store_selector",
+        on_change=load_store_context
+    )
 
-    if has_dismissed_mim:
-        col_store, col_metric, col_mim = st.columns([1.0, 1.0, 0.4], gap="small")
-    else:
-        col_store, col_metric = st.columns([1.0, 1.0], gap="small")
+with col_metric:
+    active_tickets = st.session_state.get("active_tickets", [])
+    active_count = sum(
+        1 for t in active_tickets 
+        if (t.get("status") or t.get("state") or "").strip().lower() != "closed"
+    )
+    st.markdown("<div class='metric-btn-marker'></div>", unsafe_allow_html=True)
+    metric_btn_clicked = st.button(
+        f"📋 Active Cases: {active_count}",
+        key="header_active_cases_btn",
+        use_container_width=True
+    )
+    if metric_btn_clicked:
+        st.session_state.suggestion_click = "show active cases"
+        st.rerun()
 
-    with col_store:
-        selected_store = st.selectbox(
-            "Header Store select",
-            options=STORE_OPTIONS,
-            index=STORE_OPTIONS.index(st.session_state.active_store) if st.session_state.active_store in STORE_OPTIONS else 0,
-            format_func=lambda x: f"Store: {x}",
-            label_visibility="collapsed",
-            key="header_store_selector",
-            on_change=load_store_context
-        )
-    with col_metric:
-        active_tickets = st.session_state.get("active_tickets", [])
-        active_count = sum(
-            1 for t in active_tickets 
-            if (t.get("status") or t.get("state") or "").strip().lower() != "closed"
-        )
-        st.markdown("<div class='metric-btn-marker'></div>", unsafe_allow_html=True)
-        metric_btn_clicked = st.button(
-            f"📋 Active Cases: {active_count}",
-            key="header_active_cases_btn",
-            use_container_width=True
-        )
-        if metric_btn_clicked:
-            st.session_state.suggestion_click = "show active cases"
+if has_dismissed_mim:
+    with col_mim:
+        restore_clicked = st.button("⚠️", key="restore_mim_button", help="Click to restore Major Incident Outage banner")
+        if restore_clicked:
+            st.session_state.mim_dismissed[dismissed_mim_id] = False
             st.rerun()
-    if has_dismissed_mim:
-        with col_mim:
-            restore_clicked = st.button("⚠️", key="restore_mim_button", help="Click to restore Major Incident Outage banner")
-            if restore_clicked:
-                st.session_state.mim_dismissed[dismissed_mim_id] = False
-                st.rerun()
 
 # ---------------------------------------------------------------------------
 # Major Outages / MIMs Alert
@@ -3334,10 +3401,16 @@ if st.session_state.get("active_mims"):
         mim_id = mim['number'].replace("MIM", "")
         mim_title = mim['short_description']
         with st.container(border=True):
-            col_left, col_right = st.columns([3, 1])
+            st.markdown('<div class="active-outage-box"></div>', unsafe_allow_html=True)
+            col_left, col_right = st.columns([3.2, 1], gap="medium", vertical_alignment="center")
             with col_left:
-                st.markdown(f"⚠️ **Active Outage: {mim_title} (MIM-{mim_id})**")
-                st.caption(mim.get('description', ''))
+                st.markdown(
+                    f"""
+                    <div class="outage-header">⚠️ Active Outage: {mim_title} (MIM-{mim_id})</div>
+                    <div class="outage-desc">{mim.get('description', '')}</div>
+                    """,
+                    unsafe_allow_html=True
+                )
             with col_right:
                 btn_clicked = st.button(
                     "Match My Store",

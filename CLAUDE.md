@@ -237,6 +237,7 @@ Cloud Run:   Workload Identity — service account attached to the Cloud Run rev
 | Create a second `genai.Client()` anywhere in the codebase | Call `get_genai_client()` from `llm_client.py` — it is the single source of truth |
 | Store `llm_client` in `st.session_state` | The client is managed by `@st.cache_resource`; instantiate `ChipLLMClient()` inline |
 | Push code to remote Git repository or run "git push" |  keep changes purely local but go ahead and push if the user request |
+| Edit only `llm_client.py` for a system prompt fix and call it done | If `SYSTEM_INSTRUCTIONS_BUCKET` is set in `.env`, the GCS bucket overrides the hardcoded `SYSTEM_PROMPT` in production. **You MUST also update the corresponding `.txt`/`.md` files in the `chipllm-instructions` GCS bucket.** |
 
 ---
 
@@ -255,8 +256,38 @@ These are the **right** way to grow the system without breaking it:
 
 ---
 
+## 12. System Prompt Architecture — Two-Layer Override
+
+### How It Works
+The system prompt is loaded by `get_system_instructions()` in `llm_client.py` at runtime:
+
+```
+1. Try to load .txt/.md blobs from GCS bucket: gs://chipllm-instructions/
+2. If blobs found → concatenate them (sorted alphabetically) → use as the active system prompt
+3. If bucket is empty, unreachable, or GCS auth fails → fall back to hardcoded SYSTEM_PROMPT in llm_client.py
+```
+
+### Critical Rule: Prod Prompt Lives in GCS
+> **When `SYSTEM_INSTRUCTIONS_BUCKET` is set in `.env` (it is, value: `chipllm-instructions`), the GCS bucket is the authoritative source of truth in production.**
+> Editing `SYSTEM_PROMPT` in `llm_client.py` ONLY affects local dev runs that cannot reach the bucket.
+
+### Deployment Workflow for Prompt Changes
+Whenever a system prompt change is made (persona rules, triage gates, escalation logic, etc.):
+
+1. Edit `SYSTEM_PROMPT` in `llm_client.py` (local dev / fallback)
+2. **Also** apply the equivalent change to the relevant `.txt`/`.md` file(s) in the `chipllm-instructions` GCS bucket
+3. The bucket file is the prod deploy — changes are live on next Streamlit cache TTL (300 s)
+
+### Identifying Which File in the Bucket to Edit
+- The bucket may contain multiple files (e.g., `00_persona.md`, `01_triage.md`, `02_escalation.md`)
+- Files are sorted alphabetically and concatenated — find the file that owns the section you are changing
+- If you do not have GCS access, note the required change in a comment or document it so the user can apply it manually
+
+---
+
 *Last updated: 2026-05-22 by chipLLM Lead Architect & AI Partner*
 *Any agent modifying rules in this file must leave a dated comment explaining the change.*
 - **2026-05-22**: Added strict prohibition on `git push` command executions to avoid triggering costly GCP Cloud Builds.
 - **2026-05-27**: Allowed `knowledge_base.py` to import `streamlit` for GCS playbook loading cache (`@st.cache_data`) and query the GCS API.
+- **2026-05-27**: Added Section 12 (System Prompt Architecture) documenting the two-layer GCS override pattern and the rule that prod prompt changes must be applied to the `chipllm-instructions` GCS bucket, not just `llm_client.py`. Added matching "never do" row to Section 10 table. Updated triage gate rules in `llm_client.py` to prevent the Flaky Hardware Observations opener from bypassing the one-by-one Device Details Collection questions — **these changes must also be applied to the GCS bucket file to take effect in production.**
 

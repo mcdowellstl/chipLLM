@@ -618,6 +618,43 @@ div.chips-sentinel + div[data-testid="stHorizontalBlock"] button:hover {
   transform: translateY(-1px) !important;
 }
 
+/* ── Recommended Troubleshooting Banner Button Styling ───────────────────── */
+/* Style the button container */
+div[data-testid="stMarkdownContainer"]:has(.recommended-troubleshooting-banner) + div[data-testid="stButton"] {
+  position: relative !important;
+  margin-top: -38px !important; /* Move the button up into the banner space */
+  margin-bottom: 22px !important; /* Offset the negative margin to prevent overlap with elements below */
+  padding-left: 14px !important;
+  z-index: 10 !important;
+  display: block !important;
+}
+
+/* Style the button itself to make it small, premium, and neat */
+div[data-testid="stMarkdownContainer"]:has(.recommended-troubleshooting-banner) + div[data-testid="stButton"] button {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%) !important;
+  color: white !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  border-radius: 4px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  line-height: 1 !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.25) !important;
+  width: auto !important;
+  text-transform: none !important;
+}
+
+div[data-testid="stMarkdownContainer"]:has(.recommended-troubleshooting-banner) + div[data-testid="stButton"] button:hover {
+  background: rgba(255, 199, 44, 0.2) !important;
+  border-color: #ffc72c !important;
+  color: #ffc72c !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.35) !important;
+}
+
 /* ── Hide Streamlit chrome ───────────────────────────────────────────────── */
 #MainMenu, header[data-testid="stHeader"], footer { display: none !important; }
 .viewerBadge_container__1QSob { display: none !important; }
@@ -1488,6 +1525,40 @@ def get_diagnostic_summary() -> list[tuple[str, str]]:
     return final_summary
 
 
+def is_duplicate_matching_question(content: str) -> bool:
+    """
+    Detects if the assistant message is asking the user if their issue matches
+    an existing active ticket/case.
+    """
+    import re
+    content_lower = content.lower()
+    
+    # Looks for phrases like "same issue", "same printer issue", "fresh hell", "another occurrence", "is this the same"
+    has_same_phrase = any(phrase in content_lower for phrase in [
+        "same issue", 
+        "same printer", 
+        "same kiosk", 
+        "same pos", 
+        "same device", 
+        "same bumpbar", 
+        "same bump bar", 
+        "same register", 
+        "same station", 
+        "same kvs",
+        "fresh hell",
+        "another occurrence",
+        "is this the same"
+    ])
+    
+    # Must also look like a question or contains "or is this" / "or a fresh hell"
+    is_question = "?" in content_lower or "or is" in content_lower or "is this the" in content_lower
+    
+    # Must contain reference to a ticket/case
+    has_ticket_ref = bool(re.search(r'\b(?:rc|inc|case|ticket|match)\s*#?\s*\d+\b', content_lower))
+    
+    return has_same_phrase and is_question and (has_ticket_ref or "open case" in content_lower or "existing case" in content_lower)
+
+
 def get_choices_from_message(content: str) -> list[str]:
     """
     Extract discrete choice options from typical assistant questions.
@@ -1515,6 +1586,10 @@ def get_choices_from_message(content: str) -> list[str]:
     # 0. Case options prompt bubbles - BANNED under UI Reboot
     if "case options:" in content_lower:
         return []
+
+    # Duplicate case matching flow check
+    if is_duplicate_matching_question(content):
+        return ["Same Issue", "Different Issue"]
 
     # 0. Sequential Triage questions — device model/serial now use embedded form, not chips
     if "completely stopping your store from taking orders or payments" in content_lower:
@@ -1975,9 +2050,9 @@ def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
         else:
             pattern = re.compile(re.escape(salvo_text) + r"\.?", re.IGNORECASE)
             replacement = (
-                '<div style="background: rgba(218, 41, 28, 0.08); border: 1px solid rgba(255, 199, 44, 0.3); '
-                'border-left: 4px solid var(--accent); padding: 12px 14px; border-radius: 8px; margin: 10px 0; '
-                'font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
+                '<div class="recommended-troubleshooting-banner" style="background: rgba(218, 41, 28, 0.08); border: 1px solid rgba(255, 199, 44, 0.3); '
+                'border-left: 4px solid var(--accent); padding: 12px 14px 45px 14px; border-radius: 8px; margin: 10px 0; '
+                'font-size: 13.5px; line-height: 1.5; color: var(--text-primary); position: relative;">'
                 '⚡ <b>Recommended Troubleshooting</b><br/>'
                 'There are some common troubleshooting steps that might help you fix this issue on your own. '
                 'We will quickly step through them to see if this solves the issue.'
@@ -3313,6 +3388,19 @@ for i, msg in enumerate(st.session_state.messages):
             if role == "assistant":
                 display_content = clean_assistant_message(display_content, msg_idx=i)
             st.markdown(display_content, unsafe_allow_html=True)
+            
+            if role == "assistant" and "⚡ <b>Recommended Troubleshooting</b>" in display_content:
+                if st.button("Skip Directly to Tickeet Creation", key=f"skip_trouble_{i}"):
+                    ts_now = time.strftime("%H:%M")
+                    st.session_state.messages.append({
+                        "role": "user",
+                        "content": "Skip Directly to Tickeet Creation",
+                        "timestamp": ts_now,
+                        "blocked": False
+                    })
+                    st.session_state.manual_ticket_flow = True
+                    start_escalation_triage(append_welcome=False)
+                    st.rerun()
             
             # Render optional image attachment if present in the message
             if msg.get("attachment_b64"):

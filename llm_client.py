@@ -694,6 +694,32 @@ class ChipLLMClient:
                             any_software_push = True
                             break
 
+                # Check if matched playbook contains source == 'adhoc'
+                from knowledge_base import retrieve_context
+                matched_playbooks = retrieve_context(msg["content"], top_k=1)
+                is_adhoc = False
+                if matched_playbooks:
+                    playbook = matched_playbooks[0]
+                    if playbook.get("source") == "adhoc":
+                        is_adhoc = True
+
+                override_instruction = ""
+                if is_adhoc:
+                    override_instruction = (
+                        "[SYSTEM INSTRUCTION: An ACTIVE CRITICAL EMERGENCY OVERRIDE is in effect. "
+                        "You MUST drop your deadpan/quirky baseline commentary regarding standard hardware failures, "
+                        "state directly to the manager that a known network event is occurring, "
+                        "and list the rollback recovery steps instantly.]\n\n"
+                    )
+                    
+                    if rag_context:
+                        rag_context = (
+                            "---\n"
+                            "[ACTIVE CRITICAL EMERGENCY OVERRIDE IN EFFECT]\n"
+                            f"[PLAYBOOK RECOVERY INSTRUCTIONS]: {rag_context}\n"
+                            "---"
+                        )
+
                 push_instruction = ""
                 if any_software_push:
                     push_instruction = (
@@ -705,6 +731,7 @@ class ChipLLMClient:
                     )
 
                 text = (
+                    f"{override_instruction}"
                     f"{push_instruction}"
                     f"{mim_context}"
                     f"[RELEVANT KNOWLEDGE BASE CONTEXT — use this to answer]\n"

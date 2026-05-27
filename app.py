@@ -594,9 +594,9 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) {
   box-shadow: none !important;
 }
 
-/* Both Affected + Dismiss buttons inside the outage card: small dark-gray pills
-   Use .stButton in the selector to beat the global red-gradient rule */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) .stButton > button {
+/* Outage action buttons — use ID selector (1-0-0 specificity) to guarantee
+   this beats the global .stButton > button !important red rule */
+#outage-action-col .stButton > button {
   background: #1e2130 !important;
   border: 1px solid rgba(255,255,255,.12) !important;
   color: #8892a4 !important;
@@ -612,7 +612,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) .stBu
   width: 100% !important;
   transition: background 0.15s, color 0.15s !important;
 }
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) .stButton > button:hover {
+#outage-action-col .stButton > button:hover {
   background: #262b3e !important;
   color: #c0c6d6 !important;
   border-color: rgba(255,255,255,.2) !important;
@@ -3398,6 +3398,9 @@ if st.session_state.get("active_mims"):
                     unsafe_allow_html=True,
                 )
             with col_right:
+                # ID marker gives the CSS #outage-action-col rule 1-0-0 specificity,
+                # which beats the global .stButton red !important rule.
+                st.markdown('<div id="outage-action-col"></div>', unsafe_allow_html=True)
                 btn_clicked = st.button(
                     "Affected",
                     key=f"report_mim_button_{mim_id}",

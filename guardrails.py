@@ -209,25 +209,32 @@ def is_cafe_issue(user_message: str) -> bool:
         return False
         
     cafe_keywords = {
-        "mccafe", "cafe", "coffee", "espresso", "latte", "cappuccino", "frappe",
-        "macchiato", "americano", "beverage", "brewer", "bunnomatic", "blender",
-        "drink", "frappuccino", "tea", "caffeine",
+        # Beverage types — routing signal only when paired with hardware context
+        "espresso", "latte", "cappuccino", "frappe",
+        "macchiato", "americano", "frappuccino", "caffeine",
+        # Beverage hardware keywords — these alone are unambiguous
+        "brewer", "bunnomatic", "blender",
         # Fountain soda / beverage dispensing equipment
-        "soda", "fountain", "carbonation", "carbonated", "syrup", "dispenser",
-        "ice machine", "ice maker", "slushie", "slush", "frozen drink",
+        "carbonation", "carbonated", "slushie", "slush",
     }
-    
+
     # Check word boundaries using split
     words = re.split(r"[\s\-]+", cleaned)
     if any(word in cafe_keywords for word in words):
         return True
-        
-    # Check multi-word phrases explicitly
+
+    # Multi-word phrases that unambiguously indicate beverage equipment
     multi_word_phrases = [
+        # McCafe equipment (must be paired with hardware noun, not just "mccafe printer")
+        "mccafe machine", "mccafe brewer", "mccafe espresso", "mccafe equipment",
+        "mccafe blender", "mccafe coffee machine",
+        # Generic cafe/coffee equipment
+        "coffee machine", "coffee maker", "coffee brewer",
         "iced coffee", "hot chocolate", "iced tea",
+        # Fountain / soda equipment
         "fountain soda", "soda machine", "fountain machine",
         "ice machine", "ice maker", "frozen drink", "soda dispenser",
-        "beverage dispenser", "carbonation machine",
+        "beverage dispenser", "carbonation machine", "drink dispenser",
     ]
     if any(phrase in cleaned for phrase in multi_word_phrases):
         return True

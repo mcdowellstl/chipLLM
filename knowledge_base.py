@@ -351,7 +351,7 @@ def _load_playbooks_from_html() -> list[dict]:
 L0_BUCKET = "chipllm-l0-playbooks"
 ADHOC_BUCKET = "chipllm-adhoc-playbooks"
 
-@st.cache_data
+@st.cache_data(ttl=300)
 def load_and_merge_cloud_knowledge_base():
     """
     Scrapes metadata out of HTML playbooks across both the L0 baseline bucket 
@@ -490,6 +490,7 @@ def retrieve_context(user_message: str, top_k: int = 1) -> list[dict]:
     if not query_words:
         return []
         
+    STOPWORDS = {"my", "is", "the", "a", "an", "on", "of", "to", "in", "at", "for", "with", "and", "or", "having", "it", "are", "you"}
     query_clean = " ".join(query_words)
     scored: list[tuple[float, dict]] = []
 
@@ -507,7 +508,7 @@ def retrieve_context(user_message: str, top_k: int = 1) -> list[dict]:
         
         # Word-by-word fuzzy matching
         for q_word in query_words:
-            if len(q_word) < 2:
+            if len(q_word) < 3 or q_word in STOPWORDS:
                 continue
             for cand in candidates:
                 cand_words = re.findall(r'\b\w+\b', cand)
@@ -520,7 +521,10 @@ def retrieve_context(user_message: str, top_k: int = 1) -> list[dict]:
         for cand in candidates:
             # Check exact substring first
             if query_clean in cand or cand in query_clean:
-                score = max(0.6, len(query_clean) / len(cand) if len(cand) > 0 else 0.0)
+                # Normalise score between 0.0 and 1.0 (min_len / max_len)
+                score = min(len(query_clean), len(cand)) / max(len(query_clean), len(cand)) if max(len(query_clean), len(cand)) > 0 else 0.0
+                # Give it a baseline match confidence of 0.6 if it matches substring
+                score = max(0.6, score)
                 if score > best_score:
                     best_score = score
             ratio = fuzzy_match_ratio(query_clean, cand)

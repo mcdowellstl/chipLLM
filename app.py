@@ -3501,6 +3501,16 @@ elif chat_val:
     user_input = chat_val
 
 if user_input:
+    if user_input.strip() == "/nuke-knowledge":
+        st.cache_data.clear()
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": "⚠️ Knowledge caches purged. Re-fetching operational bulletins...",
+            "timestamp": time.strftime("%H:%M"),
+            "blocked": False
+        })
+        st.rerun()
+
     logger.info("Received user chat input: %s", user_input)
     st.session_state.last_user_input = user_input
     ts_now = time.strftime("%H:%M")

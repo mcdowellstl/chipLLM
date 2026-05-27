@@ -2190,10 +2190,23 @@ def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
         
     # Strip any trailing sentence fragments commonly left behind after removing parenthesized option list
     # e.g., "for example, is it", "is it", "such as", "like", "for instance, is it a", etc.
-    fragment_pattern = r"\b(?:for\s+example|for\s+instance),?\s+(?:is\s+it(?:\s+a)?|are\s+they)?\s*$|\b(?:is\s+it|are\s+they)(?:\s+a)?\s*$|\b(?:such\s+as|like|specifically)\s*$"
-    cleaned = re.sub(fragment_pattern, "", cleaned, flags=re.IGNORECASE).strip()
-    
-    cleaned = cleaned.rstrip("?:.,; ")
+    fragment_pattern = re.compile(
+        r"\b(?:can|could)\s+you\s+(?:tell|let\s+me\s+know)(?:\s+me)?\s*$"
+        r"|\b(?:tell|let\s+me\s+know)(?:\s+me)?\s*$"
+        r"|\b(?:is\s+it|are\s+they)(?:\s+a)?\s*$"
+        r"|\b(?:such\s+as|like|specifically|for\s+example|for\s+instance)\s*$"
+        r"|\b(?:can|could)\s+you\s*$"
+        r"|\b(?:to\s+assess|assess|determine)\s*$"
+        r"|\b(?:which|what)\s+(?:one|symptom|issue|device)\s*$"
+        r"|\b(?:if\s+it\s+is|if\s+they\s+are|whether\s+it\s+is|whether\s+they\s+are)\s*$",
+        re.IGNORECASE
+    )
+    while True:
+        prev = cleaned
+        cleaned = fragment_pattern.sub("", cleaned).strip()
+        cleaned = cleaned.rstrip("?:.,; \t-–—")
+        if cleaned == prev:
+            break
     
     # 4. Dynamic Suffixes Selection
     content_lower = content.lower()

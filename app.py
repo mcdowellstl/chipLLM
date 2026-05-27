@@ -76,6 +76,33 @@ def refresh_playbook_pool(*, force: bool = False) -> list[dict]:
 
     return st.session_state.get("knowledge_base", _kb.PLAYBOOKS)
 
+
+import re as _re_guardrail
+
+_TICKET_CREATION_PATTERNS = [
+    # Direct create/open/file/raise/submit + ticket/case/incident
+    r"\b(open|create|file|raise|submit|start|log|make)\s+(a\s+|an\s+|new\s+)*(support\s+)?(ticket|case|incident|report)\b",
+    # "need to open / need a ticket / need a case"
+    r"\bneed\s+(to\s+)?(open|create|file|raise|a|an)\s+(support\s+)?(ticket|case|incident)\b",
+    # "get a ticket / get a case opened"
+    r"\bget\s+(a\s+|an\s+)?(new\s+)?(support\s+)?(ticket|case|incident)\b",
+    # Bare phrases
+    r"\b(new\s+)?(support\s+)ticket\b",
+    r"\bopen\s+(a\s+)?case\b",
+    r"\bnew\s+case\b",
+]
+
+def _is_ticket_creation_intent(text: str) -> bool:
+    """
+    Returns True if the user's message is clearly requesting ticket/case creation.
+    Catches natural phrasing that would otherwise reach the LLM and trigger the
+    hallucination that ChipLLM cannot create support tickets.
+    """
+    for pattern in _TICKET_CREATION_PATTERNS:
+        if _re_guardrail.search(pattern, text):
+            return True
+    return False
+
 def check_and_update_mim_state():
     """
     Checks if there are active MIMs, initializes the dismissal & last seen states,
@@ -3787,8 +3814,10 @@ if user_input:
     elif check_escalation_intent(user_input) and not is_ticket_status_lookup_intent(user_input):
         trigger_live_agent_flow(user_input)
         
-    # Intercept no-match stopper choices
-    elif lower_input in ["open a support ticket", "open support ticket"]:
+    # Intercept ticket creation intent — broad fuzzy match so natural phrasing
+    # ("need to open a case", "open a case", "file a ticket", etc.) never reaches
+    # the LLM and causes it to hallucinate that it can't create tickets.
+    elif _is_ticket_creation_intent(lower_input) and not is_ticket_status_lookup_intent(user_input):
         st.session_state.messages.append({
             "role": "user",
             "content": user_input,
@@ -3798,7 +3827,7 @@ if user_input:
         st.session_state.manual_ticket_flow = True
         start_escalation_triage(append_welcome=False)
         st.rerun()
-        
+
     elif lower_input in ["live chat with an agent", "live chat", "chat with an agent"]:
         trigger_live_agent_flow(user_input)
         

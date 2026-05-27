@@ -273,6 +273,32 @@ When a user asks a **Restaurant Operations & Food Safety** question, do NOT trig
 - Sarcastic, dry, witty, restaurant-literate, yet ultimately helpful, direct, and empathetic. You understand the manager is stressed — use humor to ease the pain, then fix the gear fast."""
 
 
+@st.cache_data(ttl=3600)
+def get_system_instructions() -> str:
+    """
+    Attempts to read system instruction/persona from the GCS bucket.
+    Falls back to the hardcoded SYSTEM_PROMPT in case of any failure.
+    """
+    bucket_name = "chipllm-instructions"
+    blob_name = "system_instruction.txt"
+    try:
+        from google.cloud import storage
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        if blob.exists():
+            instruction_text = blob.download_as_text()
+            if instruction_text and instruction_text.strip():
+                return instruction_text.strip()
+    except Exception as err:
+        try:
+            st.warning(f"Failed to fetch system instructions from gs://{bucket_name}/{blob_name}: {err}")
+        except Exception:
+            print(f"Failed to fetch system instructions from gs://{bucket_name}/{blob_name}: {err}")
+            
+    return SYSTEM_PROMPT
+
+
 # ---------------------------------------------------------------------------
 # Tools / Function Calling Declarations
 # ---------------------------------------------------------------------------
@@ -758,7 +784,7 @@ class ChipLLMClient:
         contents = self.build_contents(messages, rag_context)
 
         config = genai_types.GenerateContentConfig(
-            system_instruction=system_instruction if system_instruction is not None else SYSTEM_PROMPT,
+            system_instruction=system_instruction if system_instruction is not None else get_system_instructions(),
             temperature=0.3,
             max_output_tokens=1024,
             top_p=0.9,

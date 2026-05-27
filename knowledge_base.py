@@ -349,8 +349,15 @@ def _load_playbooks_from_html() -> list[dict]:
     return playbooks
 
 
-L0_BUCKET     = os.environ.get("KNOWLEDGE_STORAGE_BUCKET",  "chipllm-l0-playbooks")
-ADHOC_BUCKET  = os.environ.get("KNOWLEDGE_ADHOC_BUCKET",    "chipllm-adhoc-playbooks")
+def _strip_gs_prefix(value: str) -> str:
+    """Normalizes a GCS bucket identifier: strips leading 'gs://' if present.
+    Accepts both 'gs://my-bucket' (Cloud Run style) and 'my-bucket' (bare name).
+    """
+    return value.removeprefix("gs://")
+
+
+L0_BUCKET    = _strip_gs_prefix(os.environ.get("KNOWLEDGE_STORAGE_BUCKET", "chipllm-l0-playbooks"))
+ADHOC_BUCKET = _strip_gs_prefix(os.environ.get("KNOWLEDGE_ADHOC_BUCKET",   "chipllm-adhoc-playbooks"))
 
 
 def get_file_list(bucket_name: str) -> list[str]:

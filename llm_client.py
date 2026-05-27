@@ -281,7 +281,7 @@ def get_system_instructions() -> str:
     deterministic merge order, and concatenates into a single master string.
     Falls back to the hardcoded SYSTEM_PROMPT on any failure or empty bucket.
     """
-    bucket_name = os.environ.get("SYSTEM_INSTRUCTIONS_BUCKET", "chipllm-instructions")
+    bucket_name = os.environ.get("SYSTEM_INSTRUCTIONS_BUCKET", "chipllm-instructions").removeprefix("gs://")
     section_sep = "\n\n---NEW_SECTION---\n\n"
     try:
         from google.cloud import storage as _storage

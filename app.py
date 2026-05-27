@@ -3821,10 +3821,18 @@ if user_input:
             rag_title: str | None = None
 
             if relevant_playbooks:
-                playbook = relevant_playbooks[0]
-                rag_context = playbook["content"]
-                rag_title = playbook["title"]
-                logger.info("RAG playbook hit: '%s'", rag_title)
+                rag_context_parts = []
+                rag_titles_list = []
+                for p in relevant_playbooks:
+                    content = p["content"]
+                    if p.get("source") == "adhoc":
+                        rag_context_parts.append(f"### [CRITICAL ADHOC OVERRIDE BULLETIN]\n{content}")
+                    else:
+                        rag_context_parts.append(content)
+                    rag_titles_list.append(p["title"])
+                rag_context = "\n\n".join(rag_context_parts)
+                rag_title = ", ".join(rag_titles_list)
+                logger.info("RAG playbook hits: '%s'", rag_title)
             else:
                 logger.info("RAG playbook miss (no match found). Proceeding to conversational LLM fallback.")
 

@@ -262,6 +262,7 @@ When a user asks a **Restaurant Operations & Food Safety** question, do NOT trig
 3. When a user confirms an issue is RESOLVED, congratulate them and remind them to log the resolution in their shift notes.
 4. Keep responses concise, direct, and action-oriented.
 5. Always present option lists inside parentheses at the end of the question (e.g., "What type of printer is this? ("POS", "KVS", "Kiosk", or "BOS")"). NEVER use bulleted points, numbered lists, or separate lines to present options.
+6. You are evaluating diagnostic inputs against historical playbooks and active ad-hoc operational bulletins. If an ad-hoc bulletin matches the general system intent of the query (e.g., handles the same equipment or core software component), you MUST treat its instructions as a mandatory override, completely superseding any conflicting baseline logic found in standard L0 files.
 
 ## Response Format
 - Use markdown formatting for clarity.
@@ -694,14 +695,9 @@ class ChipLLMClient:
                             any_software_push = True
                             break
 
-                # Check if matched playbook contains source == 'adhoc'
-                from knowledge_base import retrieve_context
-                matched_playbooks = retrieve_context(msg["content"], top_k=1)
                 is_adhoc = False
-                if matched_playbooks:
-                    playbook = matched_playbooks[0]
-                    if playbook.get("source") == "adhoc":
-                        is_adhoc = True
+                if rag_context and "### [CRITICAL ADHOC OVERRIDE BULLETIN]" in rag_context:
+                    is_adhoc = True
 
                 override_instruction = ""
                 if is_adhoc:
@@ -712,11 +708,11 @@ class ChipLLMClient:
                         "and list the rollback recovery steps instantly.]\n\n"
                     )
                     
-                    if rag_context:
+                    if rag_context and "[ACTIVE CRITICAL EMERGENCY OVERRIDE IN EFFECT]" not in rag_context:
                         rag_context = (
                             "---\n"
                             "[ACTIVE CRITICAL EMERGENCY OVERRIDE IN EFFECT]\n"
-                            f"[PLAYBOOK RECOVERY INSTRUCTIONS]: {rag_context}\n"
+                            f"[PLAYBOOK RECOVERY INSTRUCTIONS]:\n{rag_context}\n"
                             "---"
                         )
 

@@ -10,6 +10,7 @@ Each entry contains:
 
 import os
 import re
+import difflib
 import streamlit as st
 from bs4 import BeautifulSoup
 from google.cloud import storage
@@ -436,19 +437,110 @@ playbooks_pool = PLAYBOOKS
 # RAG retrieval – lightweight keyword matching
 # ---------------------------------------------------------------------------
 
+ABBREVIATIONS = {
+    "wst": "waystation",
+    "waistation": "waystation",
+    "kds": "kitchen display system",
+    "kvs": "kitchen video system",
+    "pos": "point of sale",
+    "bos": "back office system",
+}
+
+def levenshtein_distance(s1: str, s2: str) -> int:
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+    if len(s2) == 0:
+        return len(s1)
+    
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+        
+    return previous_row[-1]
+
+def fuzzy_match_ratio(s1: str, s2: str) -> float:
+    max_len = max(len(s1), len(s2))
+    if max_len == 0:
+        return 1.0
+    dist = levenshtein_distance(s1, s2)
+    return 1.0 - (dist / max_len)
+
+def preprocess_text(text: str) -> list[str]:
+    # Lowercase and clean
+    cleaned = text.lower().strip()
+    words = re.findall(r'\b\w+\b', cleaned)
+    resolved_words = []
+    for w in words:
+        resolved_words.append(ABBREVIATIONS.get(w, w))
+    return resolved_words
+
 def retrieve_context(user_message: str, top_k: int = 1) -> list[dict]:
     """
-    Perform keyword-based retrieval against the playbook knowledge base.
-    Returns the top_k most relevant playbooks (by hit count).
+    Perform fuzzy matching retrieval against the playbook knowledge base.
+    Handles typos, abbreviations, and implements a two-pass context builder.
+    Ad-hoc playbooks bypass truncation limits and sit at the top.
     """
-    message_lower = user_message.lower()
-    scored: list[tuple[int, dict]] = []
+    query_words = preprocess_text(user_message)
+    if not query_words:
+        return []
+        
+    query_clean = " ".join(query_words)
+    scored: list[tuple[float, dict]] = []
 
     for playbook in PLAYBOOKS:
-        hits = sum(1 for kw in playbook["keywords"] if kw in message_lower)
-        if hits > 0:
-            scored.append((hits, playbook))
+        # Build candidate target strings for this playbook
+        candidates = []
+        if playbook.get("id"):
+            candidates.append(playbook["id"].lower().replace("_", " "))
+        if playbook.get("title"):
+            candidates.append(playbook["title"].lower())
+        for kw in playbook.get("keywords", []):
+            candidates.append(kw.lower())
 
+        best_score = 0.0
+        
+        # Word-by-word fuzzy matching
+        for q_word in query_words:
+            if len(q_word) < 2:
+                continue
+            for cand in candidates:
+                cand_words = re.findall(r'\b\w+\b', cand)
+                for c_word in cand_words:
+                    ratio = fuzzy_match_ratio(q_word, c_word)
+                    if ratio > best_score:
+                        best_score = ratio
+
+        # Full phrase matching against candidate targets
+        for cand in candidates:
+            # Check exact substring first
+            if query_clean in cand or cand in query_clean:
+                score = max(0.6, len(query_clean) / len(cand) if len(cand) > 0 else 0.0)
+                if score > best_score:
+                    best_score = score
+            ratio = fuzzy_match_ratio(query_clean, cand)
+            if ratio > best_score:
+                best_score = ratio
+
+        # Threshold of 0.6 to count as a fuzzy match
+        if best_score >= 0.6:
+            scored.append((best_score, playbook))
+
+    # Sort matches by score descending
     scored.sort(key=lambda x: x[0], reverse=True)
-    return [p for _, p in scored[:top_k]]
+    matched_playbooks = [p for _, p in scored]
+
+    # Pass 2: Separate adhoc and baseline matches
+    adhoc_matches = [p for p in matched_playbooks if p.get("source") == "adhoc"]
+    baseline_matches = [p for p in matched_playbooks if p.get("source") != "adhoc"]
+
+    # Ad-hoc matches bypass length truncation and sit at the top.
+    # Baseline matches are limited to top_k.
+    returned_playbooks = adhoc_matches + baseline_matches[:top_k]
+    return returned_playbooks
 

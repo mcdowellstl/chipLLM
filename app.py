@@ -258,29 +258,30 @@ html, body, [class*="css"] {
 .header-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   white-space: nowrap;
   padding: 0 4px;
+  margin-top: 5px;   /* compensates for Streamlit markdown container top padding */
 }
 
 .header-logo {
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   background: linear-gradient(135deg, #da291c 0%, #ffc72c 100%);
-  border-radius: 9px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
-  box-shadow: 0 2px 10px rgba(218,41,28,.45);
+  font-size: 26px;
+  box-shadow: 0 2px 12px rgba(218,41,28,.5);
   flex-shrink: 0;
 }
 
 .header-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 800;
   color: #f0f2f8;
-  letter-spacing: -0.4px;
+  letter-spacing: -0.3px;
   line-height: 1;
 }
 
@@ -3332,7 +3333,7 @@ with col_logo:
         """
         <div class="header-brand">
           <div class="header-logo">🍔</div>
-          <span class="header-title">ChipLLM</span>
+          <span class="header-title">Chip Support</span>
         </div>
         """,
         unsafe_allow_html=True,

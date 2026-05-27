@@ -27,7 +27,7 @@ Each file has a single responsibility. Agents must not collapse modules or add c
 |---|---|---|
 | `app.py` | Streamlit UI, session state, orchestration loop | No LLM calls, no raw SDK imports, no business logic |
 | `guardrails.py` | Layer 1 keyword filtering + intent signals | No LLM calls, no Streamlit imports, no RAG |
-| `knowledge_base.py` | Playbook data + `retrieve_context()` retrieval | No LLM calls, no session state, no HTTP |
+| `knowledge_base.py` | Playbook data + `retrieve_context()` retrieval | No LLM calls, no session state (GCS HTTP checks and `@st.cache_data` permitted) |
 | `llm_client.py` | SDK wrapper, context assembly, ticket extraction, **ADC client factory** | No guardrail logic — `import streamlit` is permitted here **exclusively** for the `@st.cache_resource` decorator on `get_genai_client()` |
 
 **Rule:** If a new feature touches more than two modules, stop and create a new dedicated module.
@@ -224,7 +224,7 @@ Cloud Run:   Workload Identity — service account attached to the Cloud Run rev
 | ❌ Prohibited Action | ✅ Correct Alternative |
 |---|---|
 | Call the LLM before running guardrails | Always run `check_guardrails()` first |
-| Add `import streamlit` to `guardrails.py` or `knowledge_base.py` | Only `app.py` and `llm_client.py` (for `@st.cache_resource`) may import streamlit |
+| Add `import streamlit` to `guardrails.py` | Only `app.py`, `llm_client.py` (for `@st.cache_resource`), and `knowledge_base.py` (for `@st.cache_data`) may import streamlit |
 | Use `generate_content()` (non-streaming) | Always use `generate_content_stream()` |
 | Inject RAG context into every message in history | Inject into `messages[-1]` only |
 | Store conversation history in a database | Use `st.session_state.messages` exclusively |
@@ -236,7 +236,7 @@ Cloud Run:   Workload Identity — service account attached to the Cloud Run rev
 | Use `GOOGLE_API_KEY` or a service account JSON key path | Use ADC — `gcloud auth application-default login` |
 | Create a second `genai.Client()` anywhere in the codebase | Call `get_genai_client()` from `llm_client.py` — it is the single source of truth |
 | Store `llm_client` in `st.session_state` | The client is managed by `@st.cache_resource`; instantiate `ChipLLMClient()` inline |
-| Push code to remote Git repository or run "git push" | Always keep changes purely local and let the user commit and push manually (pushes trigger expensive GCP Cloud Builds) |
+| Push code to remote Git repository or run "git push" |  keep changes purely local but go ahead and push if the user requests|
 
 ---
 
@@ -258,3 +258,5 @@ These are the **right** way to grow the system without breaking it:
 *Last updated: 2026-05-22 by chipLLM Lead Architect & AI Partner*
 *Any agent modifying rules in this file must leave a dated comment explaining the change.*
 - **2026-05-22**: Added strict prohibition on `git push` command executions to avoid triggering costly GCP Cloud Builds.
+- **2026-05-27**: Allowed `knowledge_base.py` to import `streamlit` for GCS playbook loading cache (`@st.cache_data`) and query the GCS API.
+

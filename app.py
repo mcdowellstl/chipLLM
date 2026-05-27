@@ -79,7 +79,7 @@ CURRENT_USER_NAME = "Jim Halpert"
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="Chip · Restaurant Tech Support",
+    page_title="ChipLLM · Restaurant Tech Support",
     page_icon="🍔",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -2107,7 +2107,7 @@ def trigger_live_agent_flow(user_message_text: str) -> None:
 
     case_dump_lines = [
         "Got it, let me pull in one of our support engineers to look at this with you. Hang tight for a second while I package up what we've gone over so far.\n\n",
-        "### 📋 Case Transfer Context Staged by Chip\n\n",
+        "### 📋 Case Transfer Context Staged by ChipLLM\n\n",
         "| Parameter | Value |\n",
         "| :--- | :--- |\n",
         f"| **Active Store** | `Store #{active_store} ({store_location})` |\n",
@@ -2558,7 +2558,7 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                 diagnostic_dump_lines.append("- No troubleshooting steps could be attempted or they were skipped.")
                 
             diagnostic_dump_lines.append("\n[System Action]")
-            diagnostic_dump_lines.append("- Escalated to ServiceNow via chat session with support engineer Chip.")
+            diagnostic_dump_lines.append("- Escalated to ServiceNow via chat session with support engineer ChipLLM.")
             
             st.session_state.ticket_manual_desc = "\n".join(diagnostic_dump_lines)
 
@@ -2764,7 +2764,7 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                 diagnostic_dump_lines.append("- No troubleshooting steps could be attempted or they were skipped.")
                 
             diagnostic_dump_lines.append("\n[System Action]")
-            diagnostic_dump_lines.append("- Escalated to ServiceNow via chat session with support engineer Chip.")
+            diagnostic_dump_lines.append("- Escalated to ServiceNow via chat session with support engineer ChipLLM.")
             
             if manual_flow:
                 short_desc = st.session_state.get("ticket_manual_short_desc", "").strip()
@@ -2876,7 +2876,7 @@ def render_ticket_collection_form(is_live_agent: bool = False) -> None:
                     {
                         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                         "author": "System",
-                        "text": f"Case opened via Chip by {username}"
+                        "text": f"Case opened via ChipLLM by {username}"
                     }
                 ]
             })
@@ -3090,7 +3090,7 @@ with h_col1:
         <div style="display:flex; align-items:center; gap:10px; height: 100%; margin-top: 2px;">
             <div style="font-size:24px; background:linear-gradient(135deg, var(--accent) 0%, var(--text-accent) 100%); width:40px; height:40px; border-radius:8px; display:flex; align-items:center; justify-content:center; box-shadow: 0 2px 8px var(--accent-glow); flex-shrink:0;">🍔</div>
             <div style="min-width:0;">
-                <div style="font-size:24px; font-weight:800; color:#f0f2f8; line-height:1.0; letter-spacing:-0.5px; padding-bottom: 2px;">Chip</div>
+                <div style="font-size:24px; font-weight:800; color:#f0f2f8; line-height:1.0; letter-spacing:-0.5px; padding-bottom: 2px;">ChipLLM</div>
             </div>
         </div>
         """,
@@ -3202,7 +3202,7 @@ if not st.session_state.messages:
     st.session_state.messages.append({
         "role": "assistant",
         "content": (
-            "Hi there! I'm Chip, your restaurant tech support engineer. "
+            "Hi there! I'm ChipLLM, your restaurant tech support engineer. "
             "Let me know what's acting up or what case status you need to check, "
             "and we'll get it sorted out."
         ),
@@ -3254,7 +3254,7 @@ for i, msg in enumerate(st.session_state.messages):
 def render_extra_context_form() -> None:
     """
     Renders an inline form to gather additional notes/context from the user
-    before escalating to live technician Chip.
+    before escalating to live technician ChipLLM.
     """
     st.markdown(
         '<div style="background: rgba(218, 41, 28, 0.10); border: 1px solid rgba(218, 41, 28, 0.45); '

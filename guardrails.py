@@ -162,7 +162,8 @@ def is_greeting_or_small_talk(user_message: str) -> bool:
         "hows it going", "how are you", "how are you doing", "how do you do", "nice to meet you",
         "good morning", "good afternoon", "good evening", "good day", "anyone there",
         "are you there", "is anyone there", "anybody there", "hello there", "hi there",
-        "hey there", "howdy partner", "howdy chip", "hi chip", "hello chip", "hey chip"
+        "hey there", "howdy partner", "howdy chip", "hi chip", "hello chip", "hey chip",
+        "howdy chipllm", "hi chipllm", "hello chipllm", "hey chipllm"
     }
     if cleaned in greeting_phrases:
         return True
@@ -170,7 +171,7 @@ def is_greeting_or_small_talk(user_message: str) -> bool:
     # 2. Check if the message consists entirely of greeting/pleasantry/filler words
     greeting_words = {
         "hi", "hello", "hey", "howdy", "hola", "greetings", "morning", "afternoon", "evening",
-        "yo", "whats up", "sup", "test", "testing", "chip", "there", "partner", "buddy",
+        "yo", "whats up", "sup", "test", "testing", "chip", "chipllm", "there", "partner", "buddy",
         "friend", "man", "dude", "sir", "maam", "everyone", "all", "here", "good", "whats", "up",
         "what", "is"
     }

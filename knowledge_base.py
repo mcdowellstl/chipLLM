@@ -10,6 +10,9 @@ Each entry contains:
 
 import os
 import re
+import streamlit as st
+from bs4 import BeautifulSoup
+from google.cloud import storage
 
 # ---------------------------------------------------------------------------
 # Fallback hardcoded playbooks (used if L0_KA is empty)
@@ -344,12 +347,89 @@ def _load_playbooks_from_html() -> list[dict]:
     return playbooks
 
 
-# Load dynamic HTML playbooks
-PLAYBOOKS = _load_playbooks_from_html()
+L0_BUCKET = "chipllm-l0-playbooks"
+ADHOC_BUCKET = "chipllm-adhoc-playbooks"
 
-# Fallback to the original hardcoded ones if folder is empty or not found
-if not PLAYBOOKS:
-    PLAYBOOKS = FALLBACK_PLAYBOOKS
+@st.cache_data
+def load_and_merge_cloud_knowledge_base():
+    """
+    Scrapes metadata out of HTML playbooks across both the L0 baseline bucket 
+    and the Ad-hoc overlay bucket. Resolves duplicate IDs by explicitly 
+    prioritizing hot-patch adjustments.
+    """
+    parsed_ledger = {}
+    try:
+        storage_client = storage.Client()
+        
+        # Helper function to process individual storage environments
+        def process_bucket_source(bucket_name, is_adhoc=False):
+            try:
+                bucket = storage_client.bucket(bucket_name)
+                blobs = storage_client.list_blobs(bucket_name)
+                for blob in blobs:
+                    if not blob.name.endswith(".html"):
+                        continue
+                    
+                    html_text = blob.download_as_text()
+                    soup = BeautifulSoup(html_text, "html.parser")
+                    
+                    # Extract targeted metadata elements
+                    meta_id = soup.find("meta", attrs={"name": "id"})
+                    meta_keywords = soup.find("meta", attrs={"name": "keywords"})
+                    body_text = soup.body.get_text(separator=" ", strip=True) if soup.body else ""
+                    
+                    record_id = meta_id["content"] if meta_id else blob.name
+                    keywords_list = [k.strip().lower() for k in meta_keywords["content"].split(",")] if meta_keywords else []
+                    
+                    # Extract title tag content for downstream app badge compatibility
+                    title_text = soup.title.string.strip() if (soup.title and soup.title.string) else record_id.replace("_", " ").title()
+                    
+                    # Construct storage entry dictionary
+                    entry_payload = {
+                        "id": record_id,
+                        "keywords": keywords_list,
+                        "title": title_text,
+                        "content": body_text,
+                        "source": "adhoc" if is_adhoc else "l0_baseline"
+                    }
+                    
+                    # Overwrite matching baseline keys cleanly if executing adhoc loop
+                    if is_adhoc or record_id not in parsed_ledger:
+                        parsed_ledger[record_id] = entry_payload
+            except Exception as bucket_err:
+                try:
+                    st.warning(f"Skipping storage check on bucket '{bucket_name}': {bucket_err}")
+                except Exception:
+                    print(f"Skipping storage check on bucket '{bucket_name}': {bucket_err}")
+
+        # Execution Sequence: Populate baseline ledger first, then overwrite with hot patches
+        process_bucket_source(L0_BUCKET, is_adhoc=False)
+        process_bucket_source(ADHOC_BUCKET, is_adhoc=True)
+        
+    except Exception as general_err:
+        try:
+            st.error(f"Global dynamic knowledge base union asset failure: {general_err}")
+        except Exception:
+            print(f"Global dynamic knowledge base union asset failure: {general_err}")
+
+    # Fallback to local files if dynamic bucket checking yielded nothing or failed
+    if not parsed_ledger:
+        local_playbooks = _load_playbooks_from_html()
+        for p in local_playbooks:
+            p["source"] = "local_fallback"
+            parsed_ledger[p["id"]] = p
+
+    # Fallback to the original hardcoded ones if folder is empty or not found
+    if not parsed_ledger:
+        for p in FALLBACK_PLAYBOOKS:
+            p["source"] = "hardcoded_fallback"
+            parsed_ledger[p["id"]] = p
+
+    return list(parsed_ledger.values())
+
+# Grounding runtime context vector array initialization
+PLAYBOOKS = load_and_merge_cloud_knowledge_base()
+playbooks_pool = PLAYBOOKS
 
 
 # ---------------------------------------------------------------------------

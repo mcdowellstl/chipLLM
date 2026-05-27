@@ -571,7 +571,7 @@ div[data-testid="element-container"]:has(div.metric-btn-marker) + div[data-testi
 /* ── Active Outage banner ──────────────────────────────────────────────────── */
 /* The whole card uses st.container(border=True); we just style the inner content */
 .outage-banner-title {
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 700;
   color: #f5c842;
   line-height: 1.3;
@@ -594,29 +594,31 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) {
   box-shadow: none !important;
 }
 
-/* Both Affected + Dismiss buttons inside the outage card: small gray pills */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) button {
-  background: rgba(255,255,255,.06) !important;
-  border: 1px solid rgba(255,255,255,.14) !important;
-  color: #9aa0b2 !important;
+/* Both Affected + Dismiss buttons inside the outage card: small dark-gray pills
+   Use .stButton in the selector to beat the global red-gradient rule */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) .stButton > button {
+  background: #1e2130 !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  color: #8892a4 !important;
   font-size: 11px !important;
   font-weight: 600 !important;
   min-height: 26px !important;
   height: 26px !important;
   border-radius: 6px !important;
-  padding: 0 9px !important;
+  padding: 0 10px !important;
   box-shadow: none !important;
   letter-spacing: 0.2px !important;
   white-space: nowrap !important;
   width: 100% !important;
-  transition: all 0.15s ease !important;
+  transition: background 0.15s, color 0.15s !important;
 }
-div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) button:hover {
-  background: rgba(255,255,255,.10) !important;
-  color: #d0d4e0 !important;
-  border-color: rgba(255,255,255,.22) !important;
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) .stButton > button:hover {
+  background: #262b3e !important;
+  color: #c0c6d6 !important;
+  border-color: rgba(255,255,255,.2) !important;
   transform: none !important;
   box-shadow: none !important;
+  opacity: 1 !important;
 }
 
 

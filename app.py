@@ -24,8 +24,36 @@ logger = logging.getLogger("chipLLM")
 import streamlit as st
 
 from guardrails import check_guardrails, is_greeting_or_small_talk, is_cafe_issue, is_ticket_status_lookup_intent
-from knowledge_base import retrieve_context
+from knowledge_base import (
+    retrieve_context,
+    get_file_list,
+    fetch_file_content,
+    build_playbook_pool,
+    L0_BUCKET,
+    ADHOC_BUCKET,
+)
+import knowledge_base as _kb
 from llm_client import ChipLLMClient, extract_ticket_metadata, set_alert_visibility
+
+
+@st.cache_data(ttl=300)
+def _cached_fetch_file_content(bucket_name: str, blob_name: str):
+    """Streamlit-cached wrapper around the st-free knowledge_base fetcher."""
+    return fetch_file_content(bucket_name, blob_name)
+
+
+def refresh_playbook_pool() -> list[dict]:
+    """
+    Performs a fresh list_blobs() scan on every call and rebuilds the playbook
+    pool using only files currently present in the buckets.
+    Deleted blobs are never passed to the cached fetcher, so they naturally
+    fall out of the active pool without any explicit cache invalidation.
+    """
+    l0_names = get_file_list(L0_BUCKET)
+    adhoc_names = get_file_list(ADHOC_BUCKET)
+    pool = build_playbook_pool(l0_names, adhoc_names, _cached_fetch_file_content)
+    # Fallback: if GCS is completely empty/unreachable, keep whatever the module loaded
+    return pool if pool else _kb.PLAYBOOKS
 
 def check_and_update_mim_state():
     """
@@ -3823,6 +3851,8 @@ if user_input:
             relevant_playbooks = []
             if not is_ticket_query:
                 logger.info("Attempting RAG retrieval for input: '%s'", user_input)
+                # Refresh the live manifest — deleted files are excluded automatically
+                _kb.PLAYBOOKS = refresh_playbook_pool()
                 relevant_playbooks = retrieve_context(user_input, top_k=1)
             else:
                 logger.info("Ticket query detected. Skipping RAG retrieval to prevent model distraction.")

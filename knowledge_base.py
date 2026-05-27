@@ -10,10 +10,11 @@ Each entry contains:
 
 import os
 import re
-import difflib
-import streamlit as st
+import logging
 from bs4 import BeautifulSoup
 from google.cloud import storage
+
+_log = logging.getLogger("chipLLM.knowledge_base")
 
 # ---------------------------------------------------------------------------
 # Fallback hardcoded playbooks (used if L0_KA is empty)
@@ -351,82 +352,120 @@ def _load_playbooks_from_html() -> list[dict]:
 L0_BUCKET = "chipllm-l0-playbooks"
 ADHOC_BUCKET = "chipllm-adhoc-playbooks"
 
-@st.cache_data(ttl=300)
-def load_and_merge_cloud_knowledge_base():
+
+def get_file_list(bucket_name: str) -> list[str]:
     """
-    Scrapes metadata out of HTML playbooks across both the L0 baseline bucket 
-    and the Ad-hoc overlay bucket. Resolves duplicate IDs by explicitly 
-    prioritizing hot-patch adjustments.
+    Returns the live list of HTML blob names in the given GCS bucket.
+    Always performs a fresh list_blobs() call — never cached.
+    Callers use this to build a live manifest for diffing against cached content.
     """
-    parsed_ledger = {}
     try:
-        storage_client = storage.Client()
-        
-        # Helper function to process individual storage environments
-        def process_bucket_source(bucket_name, is_adhoc=False):
-            try:
-                bucket = storage_client.bucket(bucket_name)
-                blobs = storage_client.list_blobs(bucket_name)
-                for blob in blobs:
-                    if not blob.name.endswith(".html"):
-                        continue
-                    
-                    html_text = blob.download_as_text()
-                    soup = BeautifulSoup(html_text, "html.parser")
-                    
-                    # Extract targeted metadata elements
-                    meta_id = soup.find("meta", attrs={"name": "id"})
-                    meta_keywords = soup.find("meta", attrs={"name": "keywords"})
-                    body_text = soup.body.get_text(separator=" ", strip=True) if soup.body else ""
-                    
-                    record_id = meta_id["content"] if meta_id else blob.name
-                    keywords_list = [k.strip().lower() for k in meta_keywords["content"].split(",")] if meta_keywords else []
-                    
-                    # Extract title tag content for downstream app badge compatibility
-                    title_text = soup.title.string.strip() if (soup.title and soup.title.string) else record_id.replace("_", " ").title()
-                    
-                    # Construct storage entry dictionary
-                    entry_payload = {
-                        "id": record_id,
-                        "keywords": keywords_list,
-                        "title": title_text,
-                        "content": body_text,
-                        "source": "adhoc" if is_adhoc else "l0_baseline"
-                    }
-                    
-                    # Overwrite matching baseline keys cleanly if executing adhoc loop
-                    if is_adhoc or record_id not in parsed_ledger:
-                        parsed_ledger[record_id] = entry_payload
-            except Exception as bucket_err:
-                try:
-                    st.warning(f"Skipping storage check on bucket '{bucket_name}': {bucket_err}")
-                except Exception:
-                    print(f"Skipping storage check on bucket '{bucket_name}': {bucket_err}")
+        client = storage.Client()
+        return [
+            blob.name
+            for blob in client.list_blobs(bucket_name)
+            if blob.name.endswith(".html")
+        ]
+    except Exception as exc:
+        _log.warning("get_file_list failed for bucket '%s': %s", bucket_name, exc)
+        return []
 
-        # Execution Sequence: Populate baseline ledger first, then overwrite with hot patches
-        process_bucket_source(L0_BUCKET, is_adhoc=False)
-        process_bucket_source(ADHOC_BUCKET, is_adhoc=True)
-        
-    except Exception as general_err:
-        try:
-            st.error(f"Global dynamic knowledge base union asset failure: {general_err}")
-        except Exception:
-            print(f"Global dynamic knowledge base union asset failure: {general_err}")
 
-    # Fallback to local files if dynamic bucket checking yielded nothing or failed
-    if not parsed_ledger:
+def fetch_file_content(bucket_name: str, blob_name: str) -> dict | None:
+    """
+    Downloads and parses a single HTML playbook blob.
+    Returns a structured playbook dict, or None on any error.
+    NOTE: This function is intentionally cache-free. Callers in app.py
+    wrap it with @st.cache_data so caching stays in the Streamlit layer.
+    """
+    try:
+        client = storage.Client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        html_text = blob.download_as_text()
+        soup = BeautifulSoup(html_text, "html.parser")
+
+        meta_id = soup.find("meta", attrs={"name": "id"})
+        meta_keywords = soup.find("meta", attrs={"name": "keywords"})
+        body_text = soup.body.get_text(separator=" ", strip=True) if soup.body else ""
+
+        record_id = meta_id["content"] if meta_id else blob_name
+        keywords_list = (
+            [k.strip().lower() for k in meta_keywords["content"].split(",")]
+            if meta_keywords else []
+        )
+        title_text = (
+            soup.title.string.strip()
+            if (soup.title and soup.title.string)
+            else record_id.replace("_", " ").title()
+        )
+
+        return {
+            "id": record_id,
+            "keywords": keywords_list,
+            "title": title_text,
+            "content": body_text,
+        }
+    except Exception as exc:
+        _log.warning("fetch_file_content failed for gs://%s/%s: %s", bucket_name, blob_name, exc)
+        return None
+
+
+def build_playbook_pool(
+    l0_names: list[str],
+    adhoc_names: list[str],
+    fetch_fn,
+) -> list[dict]:
+    """
+    Builds the merged playbook list from pre-filtered live manifests.
+    `fetch_fn(bucket_name, blob_name)` is a callable — in production this
+    will be the @st.cache_data-wrapped version supplied by app.py.
+
+    Merge rules:
+    - L0 baseline entries are loaded first.
+    - Ad-hoc entries overwrite any matching record_id.
+    - Blobs not present in the live manifest are simply never fetched,
+      which effectively evicts deleted files from the active pool.
+    """
+    parsed_ledger: dict[str, dict] = {}
+
+    for blob_name in l0_names:
+        entry = fetch_fn(L0_BUCKET, blob_name)
+        if entry:
+            entry = dict(entry, source="l0_baseline")
+            parsed_ledger.setdefault(entry["id"], entry)
+
+    for blob_name in adhoc_names:
+        entry = fetch_fn(ADHOC_BUCKET, blob_name)
+        if entry:
+            entry = dict(entry, source="adhoc")
+            parsed_ledger[entry["id"]] = entry  # always overwrite
+
+    return list(parsed_ledger.values())
+
+
+def load_and_merge_cloud_knowledge_base() -> list[dict]:
+    """
+    Synchronous (non-cached) initializer used at module load time and as a
+    fallback. Caching is NOT applied here — app.py owns that responsibility.
+    """
+    pool = build_playbook_pool(
+        l0_names=get_file_list(L0_BUCKET),
+        adhoc_names=get_file_list(ADHOC_BUCKET),
+        fetch_fn=fetch_file_content,
+    )
+
+    if not pool:
         local_playbooks = _load_playbooks_from_html()
         for p in local_playbooks:
             p["source"] = "local_fallback"
-            parsed_ledger[p["id"]] = p
+        pool = local_playbooks
 
-    # Fallback to the original hardcoded ones if folder is empty or not found
-    if not parsed_ledger:
-        for p in FALLBACK_PLAYBOOKS:
-            p["source"] = "hardcoded_fallback"
-            parsed_ledger[p["id"]] = p
+    if not pool:
+        pool = [dict(p, source="hardcoded_fallback") for p in FALLBACK_PLAYBOOKS]
 
-    return list(parsed_ledger.values())
+    return pool
+
 
 # Grounding runtime context vector array initialization
 PLAYBOOKS = load_and_merge_cloud_knowledge_base()

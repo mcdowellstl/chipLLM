@@ -42,18 +42,39 @@ def _cached_fetch_file_content(bucket_name: str, blob_name: str):
     return fetch_file_content(bucket_name, blob_name)
 
 
-def refresh_playbook_pool() -> list[dict]:
+_KB_REFRESH_INTERVAL = 300  # seconds (5 minutes)
+
+
+def refresh_playbook_pool(*, force: bool = False) -> list[dict]:
     """
-    Performs a fresh list_blobs() scan on every call and rebuilds the playbook
-    pool using only files currently present in the buckets.
-    Deleted blobs are never passed to the cached fetcher, so they naturally
-    fall out of the active pool without any explicit cache invalidation.
+    Returns the current playbook pool, refreshing from GCS only when needed:
+      - First call in this session (no pool in session_state yet)
+      - More than _KB_REFRESH_INTERVAL seconds since the last GCS scan
+      - force=True (triggered by /nuke-knowledge)
+
+    Between refreshes the session_state pool is returned immediately with
+    zero network calls, keeping the chat input fully responsive.
     """
-    l0_names = get_file_list(L0_BUCKET)
-    adhoc_names = get_file_list(ADHOC_BUCKET)
-    pool = build_playbook_pool(l0_names, adhoc_names, _cached_fetch_file_content)
-    # Fallback: if GCS is completely empty/unreachable, keep whatever the module loaded
-    return pool if pool else _kb.PLAYBOOKS
+    now = time.time()
+    last_loaded = st.session_state.get("kb_loaded_at", 0)
+    pool_exists = bool(st.session_state.get("knowledge_base"))
+
+    if force or not pool_exists or (now - last_loaded) >= _KB_REFRESH_INTERVAL:
+        logger.info("Refreshing playbook pool from GCS (force=%s).", force)
+        l0_names   = get_file_list(L0_BUCKET)
+        adhoc_names = get_file_list(ADHOC_BUCKET)
+        pool = build_playbook_pool(l0_names, adhoc_names, _cached_fetch_file_content)
+        if pool:
+            st.session_state.knowledge_base = pool
+            st.session_state.kb_loaded_at   = now
+            logger.info("Playbook pool refreshed: %d entries.", len(pool))
+        else:
+            # GCS unreachable — keep whatever we have (or fall back to module-init)
+            if not pool_exists:
+                st.session_state.knowledge_base = _kb.PLAYBOOKS
+                st.session_state.kb_loaded_at   = now
+
+    return st.session_state.get("knowledge_base", _kb.PLAYBOOKS)
 
 def check_and_update_mim_state():
     """
@@ -633,6 +654,13 @@ if "rag_hits" not in st.session_state:
 # Auth & Ticket state
 if "store_confirmed" not in st.session_state:
     st.session_state.store_confirmed = True
+
+# ---------------------------------------------------------------------------
+# One-time knowledge base load per session
+# ---------------------------------------------------------------------------
+if "knowledge_base" not in st.session_state:
+    logger.info("Session KB cold-start: loading playbook pool from GCS.")
+    refresh_playbook_pool()  # populates session_state.knowledge_base + kb_loaded_at
 if "active_store" not in st.session_state:
     st.session_state.active_store = DEFAULT_STORE
     logger.info("Session initialized. Default store set to %s.", st.session_state.active_store)
@@ -3531,6 +3559,9 @@ elif chat_val:
 if user_input:
     if user_input.strip() == "/nuke-knowledge":
         st.cache_data.clear()
+        # Also evict the session_state pool so the next turn triggers a full GCS re-scan
+        st.session_state.pop("knowledge_base", None)
+        st.session_state.pop("kb_loaded_at", None)
         st.session_state.messages.append({
             "role": "assistant",
             "content": "⚠️ Knowledge caches purged. Re-fetching operational bulletins...",
@@ -3851,7 +3882,7 @@ if user_input:
             relevant_playbooks = []
             if not is_ticket_query:
                 logger.info("Attempting RAG retrieval for input: '%s'", user_input)
-                # Refresh the live manifest — deleted files are excluded automatically
+                # Timestamp-gated refresh: hits GCS only if pool is stale or missing
                 _kb.PLAYBOOKS = refresh_playbook_pool()
                 relevant_playbooks = retrieve_context(user_input, top_k=1)
             else:

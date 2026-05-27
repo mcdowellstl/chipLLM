@@ -213,16 +213,14 @@ html, body, [class*="css"] {
   max-width: 420px !important;
   padding: 0 !important;
   margin: 0 auto !important;
-  padding-top: 108px !important;   /* clears brand row (52px) + controls row (56px) */
+  padding-top: 68px !important;   /* single header row: ~52px + 16px buffer */
   padding-bottom: 80px !important;
 }
 
 /* ── Sticky Header bar via sentinel ─────────────────────────────────────── */
-/* The sentinel marks an HTML element; the NEXT stVerticalBlock is the header wrapper */
+/* One unified row: 🍔 ChipLLM | store selector | active-cases button */
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  ~ div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type,
-[data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + div[data-testid="stVerticalBlock"] {
+  + [data-testid="stHorizontalBlock"] {
   position: fixed !important;
   top: 0 !important;
   left: 50% !important;
@@ -231,95 +229,68 @@ html, body, [class*="css"] {
   max-width: 420px !important;
   background: #0f111a !important;
   border-bottom: 1px solid rgba(255,255,255,.08) !important;
-  padding: 0 !important;
+  padding: 8px 14px !important;
   z-index: 9999 !important;
-  box-shadow: 0 2px 24px rgba(0,0,0,.5) !important;
-}
-
-/* ── New: The #app-header custom HTML block is sticky ────────────────────── */
-#app-header-bar {
-  position: fixed;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100%;
-  max-width: 420px;
-  background: #0f111a;
-  border-bottom: 1px solid rgba(255,255,255,.08);
-  z-index: 9999;
-  box-shadow: 0 2px 24px rgba(0,0,0,.5);
-  padding: 0;
-}
-
-/* Top row: centered logo + title */
-.header-brand-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 11px 16px 7px;
-  border-bottom: 1px solid rgba(255,255,255,.05);
-}
-
-.header-logo {
-  width: 32px;
-  height: 32px;
-  background: linear-gradient(135deg, #da291c 0%, #ffc72c 100%);
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  box-shadow: 0 2px 10px rgba(218,41,28,.4);
-  flex-shrink: 0;
-}
-
-.header-title {
-  font-size: 20px;
-  font-weight: 800;
-  color: #f0f2f8;
-  letter-spacing: -0.5px;
-  line-height: 1;
-}
-
-/* Bottom row: store dropdown + active cases pill — sits inside sentinel block */
-[data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] {
-  position: fixed !important;
-  top: 52px !important;            /* below the brand row */
-  left: 50% !important;
-  transform: translateX(-50%) !important;
-  width: 100% !important;
-  max-width: 420px !important;
-  background: #0f111a !important;
-  border-bottom: 1px solid rgba(255,255,255,.08) !important;
-  padding: 6px 14px 8px !important;
-  z-index: 9998 !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,.4) !important;
+  box-shadow: 0 2px 20px rgba(0,0,0,.55) !important;
   display: flex !important;
   align-items: center !important;
   gap: 8px !important;
 }
 
-/* Bump the content down to clear both header rows */
-.main .block-container {
-  padding-top: 108px !important;
-}
-
-/* Equal flex for both control columns */
+/* Column sizing inside header: logo col is auto/small, rest split equally */
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+  + [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(1) {
+  flex: 0 0 auto !important;
+  min-width: 0 !important;
+}
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(2) {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+}
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:nth-child(3) {
   flex: 1 1 0 !important;
   min-width: 0 !important;
 }
 
-/* Store selectbox in header controls row */
+/* Brand logo + wordmark in the first col */
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  padding: 0 4px;
+}
+
+.header-logo {
+  width: 38px;
+  height: 38px;
+  background: linear-gradient(135deg, #da291c 0%, #ffc72c 100%);
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  box-shadow: 0 2px 10px rgba(218,41,28,.45);
+  flex-shrink: 0;
+}
+
+.header-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #f0f2f8;
+  letter-spacing: -0.4px;
+  line-height: 1;
+}
+
+/* Store selectbox in header */
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] > div > div {
   background: rgba(255,255,255,.06) !important;
   border: 1px solid rgba(255,255,255,.13) !important;
   color: #f0f2f8 !important;
-  font-size: 13px !important;
+  font-size: 12px !important;
   font-weight: 600 !important;
   min-height: 36px !important;
   height: 36px !important;
@@ -340,8 +311,8 @@ html, body, [class*="css"] {
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] svg {
   fill: #8892a4 !important;
-  width: 14px !important;
-  height: 14px !important;
+  width: 13px !important;
+  height: 13px !important;
 }
 
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
@@ -360,13 +331,13 @@ html, body, [class*="css"] {
   padding-right: 24px !important;
 }
 
-/* Active Cases button in header controls row */
+/* Active Cases button in header */
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] .stButton > button {
   background: rgba(255,255,255,.06) !important;
   border: 1px solid rgba(255,255,255,.13) !important;
   color: #f0f2f8 !important;
-  font-size: 13px !important;
+  font-size: 12px !important;
   font-weight: 600 !important;
   padding: 0 10px !important;
   min-height: 36px !important;
@@ -598,35 +569,13 @@ div[data-testid="element-container"]:has(div.metric-btn-marker) + div[data-testi
 }
 
 /* ── Active Outage banner ──────────────────────────────────────────────────── */
-.outage-banner {
-  background: rgba(255, 140, 0, 0.06);
-  border: 1px solid rgba(255, 140, 0, 0.28);
-  border-left: 3px solid #ff8c00;
-  border-radius: 10px;
-  padding: 12px 14px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 2px;
-}
-
-.outage-banner-icon {
-  font-size: 18px;
-  flex-shrink: 0;
-  line-height: 1;
-}
-
-.outage-banner-body {
-  flex: 1;
-  min-width: 0;
-}
-
+/* The whole card uses st.container(border=True); we just style the inner content */
 .outage-banner-title {
   font-size: 12.5px;
   font-weight: 700;
   color: #f5c842;
   line-height: 1.3;
-  margin-bottom: 3px;
+  margin-bottom: 4px;
 }
 
 .outage-banner-desc {
@@ -635,55 +584,39 @@ div[data-testid="element-container"]:has(div.metric-btn-marker) + div[data-testi
   line-height: 1.4;
 }
 
-.outage-banner-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  flex-shrink: 0;
-}
-
-/* Affected button — orange tint, distinct from Active Cases neutral gray */
-div[data-testid="stVerticalBlock"]:has(div.active-outage-box) div[data-testid="column"]:nth-child(2) button:first-child {
-  background: rgba(255, 140, 0, 0.15) !important;
-  border: 1px solid rgba(255, 140, 0, 0.45) !important;
-  color: #ffaa44 !important;
-  font-size: 11.5px !important;
-  font-weight: 700 !important;
-  min-height: 30px !important;
-  height: 30px !important;
-  border-radius: 7px !important;
-  padding: 0 10px !important;
+/* Outage card container — use border=True in Python */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) {
+  border: 1px solid rgba(255, 180, 0, 0.22) !important;
+  background: rgba(255, 160, 0, 0.04) !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+  margin-bottom: 8px !important;
   box-shadow: none !important;
-  transition: all 0.15s ease !important;
-  white-space: nowrap !important;
-  width: 100% !important;
-}
-div[data-testid="stVerticalBlock"]:has(div.active-outage-box) div[data-testid="column"]:nth-child(2) button:first-child:hover {
-  background: rgba(255, 140, 0, 0.25) !important;
-  border-color: rgba(255, 140, 0, 0.65) !important;
-  transform: translateY(-1px) !important;
 }
 
-/* Dismiss button — muted, secondary */
-div[data-testid="stVerticalBlock"]:has(div.active-outage-box) div[data-testid="column"]:nth-child(2) button:last-child {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  color: #6b7585 !important;
-  font-size: 11.5px !important;
+/* Both Affected + Dismiss buttons inside the outage card: small gray pills */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) button {
+  background: rgba(255,255,255,.06) !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  color: #9aa0b2 !important;
+  font-size: 11px !important;
   font-weight: 600 !important;
-  min-height: 30px !important;
-  height: 30px !important;
-  border-radius: 7px !important;
-  padding: 0 10px !important;
+  min-height: 26px !important;
+  height: 26px !important;
+  border-radius: 6px !important;
+  padding: 0 9px !important;
   box-shadow: none !important;
-  transition: all 0.15s ease !important;
+  letter-spacing: 0.2px !important;
   white-space: nowrap !important;
   width: 100% !important;
+  transition: all 0.15s ease !important;
 }
-div[data-testid="stVerticalBlock"]:has(div.active-outage-box) div[data-testid="column"]:nth-child(2) button:last-child:hover {
-  background: rgba(255, 255, 255, 0.09) !important;
-  color: #9aa0b0 !important;
-  transform: translateY(-1px) !important;
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) button:hover {
+  background: rgba(255,255,255,.10) !important;
+  color: #d0d4e0 !important;
+  border-color: rgba(255,255,255,.22) !important;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 
@@ -3368,22 +3301,7 @@ def load_store_context():
     })
 
 # ---------------------------------------------------------------------------
-# Header — Row 1: centered brand bar (pure HTML, no Streamlit columns)
-# ---------------------------------------------------------------------------
-st.markdown(
-    """
-    <div id="app-header-bar">
-      <div class="header-brand-row">
-        <div class="header-logo">🍔</div>
-        <span class="header-title">ChipLLM</span>
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-# ---------------------------------------------------------------------------
-# Header — Row 2: store selector + active cases (sticky via sentinel trick)
+# Header — single sticky row: logo+name | store selector | active cases
 # ---------------------------------------------------------------------------
 st.markdown('<div id="header-sentinel"></div>', unsafe_allow_html=True)
 
@@ -3401,17 +3319,29 @@ if active_mims:
             dismissed_mim_id = norm_id
             break
 
+# Three-column header: brand | store | active-cases  (or brand | store | cases | ⚠️)
 if has_dismissed_mim:
-    col_store, col_metric, col_mim = st.columns([1, 1, 0.25], gap="small")
+    col_logo, col_store, col_metric, col_mim = st.columns([1.2, 1.5, 1.5, 0.3], gap="small")
 else:
-    col_store, col_metric = st.columns([1, 1], gap="small")
+    col_logo, col_store, col_metric = st.columns([1.2, 1.5, 1.5], gap="small")
+
+with col_logo:
+    st.markdown(
+        """
+        <div class="header-brand">
+          <div class="header-logo">🍔</div>
+          <span class="header-title">ChipLLM</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 with col_store:
     selected_store = st.selectbox(
         "Header Store select",
         options=STORE_OPTIONS,
         index=STORE_OPTIONS.index(st.session_state.active_store) if st.session_state.active_store in STORE_OPTIONS else 0,
-        format_func=lambda x: f"🏪 Store: {x}",
+        format_func=lambda x: f"🏪 {x}",
         label_visibility="collapsed",
         key="header_store_selector",
         on_change=load_store_context
@@ -3454,19 +3384,14 @@ if st.session_state.get("active_mims"):
         mim_title = mim['short_description']
         mim_desc  = mim.get('description', '')
 
-        with st.container(border=False):
+        with st.container(border=True):
             st.markdown('<div class="active-outage-box"></div>', unsafe_allow_html=True)
             col_left, col_right = st.columns([3, 1], gap="small", vertical_alignment="center")
             with col_left:
                 st.markdown(
                     f"""
-                    <div class="outage-banner">
-                      <div class="outage-banner-icon">⚡</div>
-                      <div class="outage-banner-body">
-                        <div class="outage-banner-title">Active Outage: {mim_title}</div>
-                        <div class="outage-banner-desc">{mim_desc}</div>
-                      </div>
-                    </div>
+                    <div class="outage-banner-title">⚡ Active Outage: {mim_title}</div>
+                    <div class="outage-banner-desc">{mim_desc}</div>
                     """,
                     unsafe_allow_html=True,
                 )

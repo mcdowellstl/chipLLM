@@ -848,7 +848,7 @@ div[data-testid="element-container"]:has(.skip-btn-marker) {
 /* Target the stButton immediately following the marker container */
 div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="element-container"] div[data-testid="stButton"],
 div[data-testid="stVerticalBlock"]:has(.skip-btn-marker) div[data-testid="stButton"] {
-  margin-top: -46px !important;
+  margin-top: -58px !important;
   padding-left: 14px !important;
   padding-bottom: 6px !important;
   position: relative !important;

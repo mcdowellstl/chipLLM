@@ -672,41 +672,14 @@ div.chips-sentinel + div[data-testid="stHorizontalBlock"] button:hover {
   transform: translateY(-1px) !important;
 }
 
-/* ── Recommended Troubleshooting Banner Button Styling ───────────────────── */
-/* Style the button container */
-div[data-testid="stMarkdownContainer"]:has(.recommended-troubleshooting-banner) + div[data-testid="stButton"] {
-  position: relative !important;
-  margin-top: -38px !important; /* Move the button up into the banner space */
-  margin-bottom: 22px !important; /* Offset the negative margin to prevent overlap with elements below */
-  padding-left: 14px !important;
-  z-index: 10 !important;
-  display: block !important;
+/* ── Recommended Troubleshooting Banner — skip link lives in the HTML itself */
+.recommended-troubleshooting-banner a {
+  transition: background 0.15s, color 0.15s;
 }
-
-/* Style the button itself to make it small, premium, and neat */
-div[data-testid="stMarkdownContainer"]:has(.recommended-troubleshooting-banner) + div[data-testid="stButton"] button {
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%) !important;
-  color: white !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
-  padding: 4px 10px !important;
-  font-size: 11px !important;
-  font-weight: 600 !important;
-  border-radius: 4px !important;
-  height: 24px !important;
-  min-height: 24px !important;
-  line-height: 1 !important;
-  transition: all 0.2s ease !important;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.25) !important;
-  width: auto !important;
-  text-transform: none !important;
-}
-
-div[data-testid="stMarkdownContainer"]:has(.recommended-troubleshooting-banner) + div[data-testid="stButton"] button:hover {
-  background: rgba(255, 199, 44, 0.2) !important;
-  border-color: #ffc72c !important;
-  color: #ffc72c !important;
-  transform: translateY(-1px) !important;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.35) !important;
+.recommended-troubleshooting-banner a:hover {
+  background: #262b3e !important;
+  color: #c0c6d6 !important;
+  border-color: rgba(255,255,255,.2) !important;
 }
 
 /* ── Hide Streamlit chrome ───────────────────────────────────────────────── */
@@ -3444,6 +3417,22 @@ if not st.session_state.messages:
     })
 
 # ---------------------------------------------------------------------------
+# Handle skip-to-ticket query param (set by the HTML link inside the banner)
+# ---------------------------------------------------------------------------
+if st.query_params.get("skip_to_ticket"):
+    st.query_params.clear()
+    ts_now = time.strftime("%H:%M")
+    st.session_state.messages.append({
+        "role": "user",
+        "content": "Skip Directly to Ticket Creation",
+        "timestamp": ts_now,
+        "blocked": False
+    })
+    st.session_state.manual_ticket_flow = True
+    start_escalation_triage(append_welcome=False)
+    st.rerun()
+
+# ---------------------------------------------------------------------------
 # Render conversation history
 # ---------------------------------------------------------------------------
 
@@ -3463,19 +3452,6 @@ for i, msg in enumerate(st.session_state.messages):
             if role == "assistant":
                 display_content = clean_assistant_message(display_content, msg_idx=i)
             st.markdown(display_content, unsafe_allow_html=True)
-            
-            if role == "assistant" and "⚡ <b>Recommended Troubleshooting</b>" in display_content:
-                if st.button("Skip Directly to Tickeet Creation", key=f"skip_trouble_{i}"):
-                    ts_now = time.strftime("%H:%M")
-                    st.session_state.messages.append({
-                        "role": "user",
-                        "content": "Skip Directly to Tickeet Creation",
-                        "timestamp": ts_now,
-                        "blocked": False
-                    })
-                    st.session_state.manual_ticket_flow = True
-                    start_escalation_triage(append_welcome=False)
-                    st.rerun()
             
             # Render optional image attachment if present in the message
             if msg.get("attachment_b64"):

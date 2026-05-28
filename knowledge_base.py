@@ -244,7 +244,7 @@ FALLBACK_PLAYBOOKS: list[dict] = [
             "crashed into", "car crashed", "vehicle hit", "hit the sign",
             "hit the board", "damaged sign", "damaged board", "knocked over",
             "knocked down", "physical damage", "broken sign", "broken board",
-            "drivethru board", "drive-thru board", "outdoor kiosk",
+            "drivethru board", "drive-thru board",
             "order board", "speaker post", "order speaker", "loop detector",
             "drivethru display", "drivethru screen",
         ],

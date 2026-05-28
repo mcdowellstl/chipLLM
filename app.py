@@ -3954,7 +3954,10 @@ chat_val = st.chat_input(
 )
 
 user_input = None
-if st.session_state.suggestion_click:
+if st.session_state.get("pending_user_input"):
+    user_input = st.session_state.pending_user_input
+    st.session_state.pending_user_input = None
+elif st.session_state.suggestion_click:
     user_input = st.session_state.suggestion_click
     st.session_state.suggestion_click = None
 elif chat_val:
@@ -4285,14 +4288,20 @@ if user_input:
         
     else:
         # Standard AI chat logic
-        st.session_state.messages.append(
-            {
-                "role": "user",
-                "content": user_input,
-                "timestamp": ts_now,
-                "blocked": False,
-            }
-        )
+        if not st.session_state.get("processing_pending_input"):
+            st.session_state.messages.append(
+                {
+                    "role": "user",
+                    "content": user_input,
+                    "timestamp": ts_now,
+                    "blocked": False,
+                }
+            )
+            st.session_state.pending_user_input = user_input
+            st.session_state.processing_pending_input = True
+            st.rerun()
+
+        st.session_state.processing_pending_input = False
 
         is_connected_stage = st.session_state.get("escalation_stage") == "connected"
         if is_connected_stage:

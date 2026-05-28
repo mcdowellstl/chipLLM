@@ -79,6 +79,7 @@ For any tech issue reported, you MUST follow this exact sequential progression:
 
 1. **Device Details Collection (ONE-BY-ONE Clarification)**:
     - **General Device/Tech Identification (MANDATORY START)**: If the user indicates they have a new issue but has not yet specified, named, or given a clear indication of which piece of restaurant technology or device (e.g., printer, register/POS, kiosk, KVS/KDS screen) is experiencing the problem, you MUST first ask them which device or piece of kitchen tech is having the issue. You MUST NOT guess a device type, jump to conclusions, or present symptom options for any specific device until they have explicitly indicated the device/tech category or described their problem in a way that identifies the device.
+    - **POS / Kiosk Printer vs Terminal Warning**: A "POS Printer" or "Kiosk Printer" is categorized as a **Printer**, NOT as a POS register/terminal or a Kiosk terminal. If the user reported a printer issue (even if they specify the printer type is "POS" or "Kiosk"), you MUST follow the **Printers** flow rules and collect printer symptoms: `("Paper Jam", "Not Printing", "Garbled Text", "Paper Out", or "Error Light")`. You MUST NOT switch to the POS or Kiosk terminal flows or present terminal symptoms (like "Card Reader Fail", "Screen Frozen", etc.).
     - Dynamically identify which details are required **strictly based on the retrieved RAG playbooks in context**:
      - **Printers**:
        - **ABSOLUTE GATE — Printer Type is ALWAYS the first question for any printer issue**: You MUST ask the printer type question BEFORE doing anything else for a printer. Generic descriptions like "my printer is broke", "the printer won't print", or "printer issue" do NOT provide the printer type. You MUST ask it. **Never assume, infer, or guess the printer type.** This gate is non-negotiable — not even a matching RAG playbook gives you permission to skip it.
@@ -318,16 +319,20 @@ def get_system_instructions(personality: str = "Normal") -> str:
 
     # Fallback to local files next
     for name in filenames:
-        try:
-            import os as _os
-            local_path = _os.path.join(_os.path.dirname(__file__), name)
-            if _os.path.exists(local_path):
-                with open(local_path, "r", encoding="utf-8") as f:
-                    text = f.read().strip()
-                    if text:
-                        return text
-        except Exception as local_err:
-            pass
+        for folder in ["storage/instructions", ""]:
+            try:
+                import os as _os
+                if folder:
+                    local_path = _os.path.join(_os.path.dirname(__file__), folder, name)
+                else:
+                    local_path = _os.path.join(_os.path.dirname(__file__), name)
+                if _os.path.exists(local_path):
+                    with open(local_path, "r", encoding="utf-8") as f:
+                        text = f.read().strip()
+                        if text:
+                            return text
+            except Exception as local_err:
+                pass
 
     return SYSTEM_PROMPT
 

@@ -4557,16 +4557,40 @@ if user_input:
                     
                     relevant_playbooks = []
                     if not is_ticket_query:
-                        logger.info("Attempting RAG retrieval for input: '%s'", user_input)
-                        # Timestamp-gated refresh: hits GCS only if pool is stale or missing
-                        _kb.PLAYBOOKS = refresh_playbook_pool()
-                        relevant_playbooks = retrieve_context(user_input, top_k=1)
-                        if relevant_playbooks:
-                            st.session_state.active_playbooks = relevant_playbooks
-                            logger.info("Found matching playbook(s): %s. Saved to active_playbooks.", [p['title'] for p in relevant_playbooks])
-                        elif st.session_state.get("active_playbooks"):
+                        # Skip RAG retrieval and carry forward active playbooks if the input is a short triage response/choice
+                        input_clean = user_input.strip().lower().rstrip("?. ")
+                        triage_terms = {
+                            "1", "2", "3", "4", "all", "all of them",
+                            "pos", "kvs", "kiosk", "bos",
+                            "yes", "no", "y", "n", "yeah", "nope", "correct", "incorrect",
+                            "same issue", "different issue", "only one", "multiples", "there are multiples",
+                            "paper jam", "not printing", "garbled text", "paper out", "error light",
+                            "screen blank", "orders missing", "touch fail", "offline/lights",
+                            "reboot loop", "physically dead", "offline", "unresponsive", "power issue",
+                            "no lights", "rebooting", "broken", "buttons not working", "buttons not responding",
+                            "blank", "frozen", "black screen", "card reader failing", "receipt print error"
+                        }
+                        has_active = bool(st.session_state.get("active_playbooks"))
+                        is_triage_choice = (
+                            len(input_clean) <= 15 
+                            or input_clean in triage_terms
+                            or any(term in input_clean for term in ["pos ", " kiosk ", " kvs ", " bos "])
+                        )
+                        
+                        if has_active and is_triage_choice:
                             relevant_playbooks = st.session_state.active_playbooks
-                            logger.info("Carrying forward active playbook(s): %s.", [p['title'] for p in relevant_playbooks])
+                            logger.info("Short triage/choice input '%s' detected. Carrying forward active playbook(s): %s.", user_input, [p['title'] for p in relevant_playbooks])
+                        else:
+                            logger.info("Attempting RAG retrieval for input: '%s'", user_input)
+                            # Timestamp-gated refresh: hits GCS only if pool is stale or missing
+                            _kb.PLAYBOOKS = refresh_playbook_pool()
+                            relevant_playbooks = retrieve_context(user_input, top_k=1)
+                            if relevant_playbooks:
+                                st.session_state.active_playbooks = relevant_playbooks
+                                logger.info("Found matching playbook(s): %s. Saved to active_playbooks.", [p['title'] for p in relevant_playbooks])
+                            elif st.session_state.get("active_playbooks"):
+                                relevant_playbooks = st.session_state.active_playbooks
+                                logger.info("Carrying forward active playbook(s): %s.", [p['title'] for p in relevant_playbooks])
                     else:
                         logger.info("Ticket query detected. Skipping RAG retrieval to prevent model distraction.")
                         st.session_state.active_playbooks = []

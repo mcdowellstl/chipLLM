@@ -33,7 +33,7 @@ from knowledge_base import (
     ADHOC_BUCKET,
 )
 import knowledge_base as _kb
-from llm_client import ChipLLMClient, extract_ticket_metadata, set_alert_visibility
+from llm_client import ChipLLMClient, extract_ticket_metadata, set_alert_visibility, get_system_instructions
 
 
 @st.cache_data(ttl=300)
@@ -836,6 +836,16 @@ if st.session_state.get("needs_reset", False):
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+# ---------------------------------------------------------------------------
+# Demo language change detection — reset chat when slider changes
+# ---------------------------------------------------------------------------
+_demo_lang_prev = st.session_state.get("_demo_language_prev", "English")
+_demo_lang_now  = st.session_state.get("demo_language", "English")
+if _demo_lang_prev != _demo_lang_now:
+    st.session_state._demo_language_prev = _demo_lang_now
+    st.session_state.needs_reset = True
+    st.rerun()
 
 if "ticket_metadata" not in st.session_state:
     st.session_state.ticket_metadata = None
@@ -3610,13 +3620,21 @@ if st.session_state.get("status_update_success"):
 # ---------------------------------------------------------------------------
 
 if not st.session_state.messages:
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": (
+    _is_spanish = st.session_state.get("demo_language") == "Spanish"
+    if _is_spanish:
+        _welcome = (
+            "¡Hola! Soy ChipLLM, tu asistente de soporte técnico para el restaurante. "
+            "¿Qué está fallando hoy, o qué caso necesitas revisar? ¡Cuentéme y lo resolvemos juntos!"
+        )
+    else:
+        _welcome = (
             "Hi there! I'm ChipLLM, your restaurant tech support engineer. "
             "Let me know what's acting up or what case status you need to check, "
             "and we'll get it sorted out."
-        ),
+        )
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": _welcome,
         "timestamp": time.strftime("%H:%M"),
         "blocked": False
     })
@@ -4368,6 +4386,21 @@ if user_input:
                             f"Use phrases like 'Hi there!' or 'Thanks for that detail,' when appropriate, and be extremely helpful.\n"
                             f"Keep responses relatively concise and do not repeat your initial greeting."
                         )
+
+                # Inject language directive for Spanish demo mode
+                if st.session_state.get("demo_language") == "Spanish":
+                    _lang_directive = (
+                        "\n\n[LANGUAGE OVERRIDE — DEMO MODE] "
+                        "You MUST respond entirely in Spanish (español). "
+                        "Use warm, professional, informal Latin American Spanish appropriate for a restaurant employee (tuteo). "
+                        "All responses — greetings, troubleshooting steps, confirmations, and questions — must be in Spanish. "
+                        "Technical terms without a common Spanish equivalent may remain in English, but wrap them in a brief Spanish explanation. "
+                        "Do NOT switch to English under any circumstances."
+                    )
+                    if sys_inst is None:
+                        sys_inst = get_system_instructions() + _lang_directive
+                    else:
+                        sys_inst = sys_inst + _lang_directive
                 for chunk in client.stream_response(
                     messages=st.session_state.messages,
                     rag_context=rag_context,

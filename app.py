@@ -307,9 +307,19 @@ html, body, [class*="css"] {
   line-height: 1;
 }
 
-/* Store selectbox in header */
-[data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] > div > div {
+/* Completely hide the element-containers wrapping the markdown markers so they take 0 space and don't offset buttons */
+div[data-testid="element-container"]:has(#header-store-marker) {
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: none !important;
+}
+
+/* Store selectbox in header using the new marker */
+div[data-testid="stColumn"]:has(#header-store-marker) [data-testid="stSelectbox"] > div > div {
   background: rgba(255,255,255,.06) !important;
   border: 1px solid rgba(255,255,255,.13) !important;
   color: #f0f2f8 !important;
@@ -323,47 +333,42 @@ html, body, [class*="css"] {
   white-space: nowrap !important;
 }
 
-[data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] > div > div:hover {
+div[data-testid="stColumn"]:has(#header-store-marker) [data-testid="stSelectbox"] > div > div:hover {
   border-color: rgba(255,199,44,.5) !important;
   background: rgba(255,255,255,.09) !important;
 }
 
 /* Override native focus borders on selectbox */
-[data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] > div > div:focus-within {
+div[data-testid="stColumn"]:has(#header-store-marker) [data-testid="stSelectbox"] > div > div:focus-within {
   border-color: rgba(255,199,44,.6) !important;
   box-shadow: 0 0 0 1px rgba(255,199,44,.6) !important;
 }
 
-[data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] svg {
+div[data-testid="stColumn"]:has(#header-store-marker) [data-testid="stSelectbox"] svg {
   fill: #8892a4 !important;
   width: 12px !important;
   height: 12px !important;
 }
 
-[data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [data-baseweb="select"] {
+div[data-testid="stColumn"]:has(#header-store-marker) [data-testid="stSelectbox"] [data-baseweb="select"] {
   height: 36px !important;
 }
 
-[data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [class*="ValueContainer"] {
+div[data-testid="stColumn"]:has(#header-store-marker) [data-testid="stSelectbox"] [class*="ValueContainer"] {
   padding: 0 2px !important;
 }
 
 /* Force smaller font-size on both text and emoji icon inside selectbox */
-[data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [class*="ValueContainer"],
-[data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [class*="ValueContainer"] * {
-  font-size: 13px !important;
+div[data-testid="stColumn"]:has(#header-store-marker) [data-testid="stSelectbox"] [class*="ValueContainer"],
+div[data-testid="stColumn"]:has(#header-store-marker) [data-testid="stSelectbox"] [class*="ValueContainer"] *,
+div[data-testid="stColumn"]:has(#header-store-marker) [data-testid="stSelectbox"] [data-baseweb="select"] *,
+div[data-testid="stColumn"]:has(#header-store-marker) [data-testid="stSelectbox"] [data-baseweb="select"] span,
+div[data-testid="stColumn"]:has(#header-store-marker) [data-testid="stSelectbox"] [data-baseweb="select"] div {
+  font-size: 12px !important;
   font-weight: 600 !important;
 }
 
-[data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [data-baseweb="select"] > div {
+div[data-testid="stColumn"]:has(#header-store-marker) [data-testid="stSelectbox"] [data-baseweb="select"] > div {
   padding-left: 6px !important;
   padding-right: 20px !important;
 }
@@ -3562,6 +3567,7 @@ with col_logo:
     )
 
 with col_store:
+    st.markdown('<div id="header-store-marker"></div>', unsafe_allow_html=True)
     selected_store = st.selectbox(
         "Header Store select",
         options=STORE_OPTIONS,

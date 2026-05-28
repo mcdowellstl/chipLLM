@@ -836,17 +836,17 @@ div.chips-sentinel + div[data-testid="stHorizontalBlock"] button:hover {
   transform: translateY(-1px) !important;
 }
 
-/* ── Recommended Troubleshooting Banner — skip button positioned inside via :has() */
-/* Target the stButton inside the same stVerticalBlock as the banner + marker.
-   :has() with two class/id conditions gives 0-2-1 specificity — enough to beat defaults. */
-div[data-testid="stVerticalBlock"]:has(.recommended-troubleshooting-banner):has(#skip-btn-marker) div[data-testid="stButton"] {
-  margin-top: -40px !important;
+/* ── Recommended Troubleshooting Banner — skip button positioned inside via .skip-btn-marker */
+div:has(> .skip-btn-marker) + div div[data-testid="stButton"],
+div[data-testid="stVerticalBlock"]:has(.skip-btn-marker) div[data-testid="stButton"] {
+  margin-top: -46px !important;
   padding-left: 14px !important;
   padding-bottom: 6px !important;
   position: relative !important;
   z-index: 5 !important;
 }
-div[data-testid="stVerticalBlock"]:has(.recommended-troubleshooting-banner):has(#skip-btn-marker) div[data-testid="stButton"] button {
+div:has(> .skip-btn-marker) + div div[data-testid="stButton"] button,
+div[data-testid="stVerticalBlock"]:has(.skip-btn-marker) div[data-testid="stButton"] button {
   background: #1e2130 !important;
   color: #8892a4 !important;
   border: 1px solid rgba(255,255,255,.14) !important;
@@ -862,11 +862,13 @@ div[data-testid="stVerticalBlock"]:has(.recommended-troubleshooting-banner):has(
   letter-spacing: 0.2px !important;
   transition: background 0.15s, color 0.15s !important;
 }
-div[data-testid="stVerticalBlock"]:has(.recommended-troubleshooting-banner):has(#skip-btn-marker) div[data-testid="stButton"] button:hover {
+div:has(> .skip-btn-marker) + div div[data-testid="stButton"] button:hover,
+div[data-testid="stVerticalBlock"]:has(.skip-btn-marker) div[data-testid="stButton"] button:hover {
   background: #262b3e !important;
   color: #c0c6d6 !important;
   border-color: rgba(255,255,255,.22) !important;
 }
+
 
 /* ── Hide Streamlit chrome ───────────────────────────────────────────────── */
 #MainMenu, header[data-testid="stHeader"], footer { display: none !important; }
@@ -2433,14 +2435,9 @@ def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
                 '⚡ <b>Recommended Troubleshooting</b><br/>'
                 'There are some common troubleshooting steps that might help you fix this issue on your own. '
                 'We will quickly step through them to see if this solves the issue.'
-                '<br/><div style="margin-top: 10px;">'
-                '<a href="?skip_to_ticket=1" style="display: inline-block; background: #1e2130; '
-                'border: 1px solid rgba(255,255,255,.14); color: #8892a4; font-size: 11px; font-weight: 600; '
-                'border-radius: 5px; padding: 4px 10px; text-decoration: none; letter-spacing: 0.2px;">'
-                'Skip Directly to Ticket Creation'
-                '</a>'
+                '<div style="height: 30px;"></div>'
                 '</div>'
-                '</div>'
+                '<!-- SPLIT_TROUBLESHOOTING_BANNER -->'
             )
             content = pattern.sub(replacement, content)
 
@@ -3863,13 +3860,14 @@ for i, msg in enumerate(st.session_state.messages):
             display_content = msg["content"]
             if role == "assistant":
                 display_content = clean_assistant_message(display_content, msg_idx=i)
-            st.markdown(display_content, unsafe_allow_html=True)
 
-            # Skip button — rendered as a real st.button (preserves session state)
-            # The CSS :has(.recommended-troubleshooting-banner):has(#skip-btn-marker)
-            # pulls it visually inside the banner box using negative margin-top.
-            if role == "assistant" and "recommended-troubleshooting-banner" in display_content:
-                st.markdown('<div id="skip-btn-marker"></div>', unsafe_allow_html=True)
+            # Split and render sequentially if the troubleshooting banner is present with our split marker
+            if role == "assistant" and "<!-- SPLIT_TROUBLESHOOTING_BANNER -->" in display_content:
+                parts = display_content.split("<!-- SPLIT_TROUBLESHOOTING_BANNER -->", 1)
+                st.markdown(parts[0], unsafe_allow_html=True)
+                
+                # Render skip button immediately after the banner
+                st.markdown('<div class="skip-btn-marker"></div>', unsafe_allow_html=True)
                 if st.button("Skip Directly to Ticket Creation", key=f"skip_trouble_{i}"):
                     ts_now = time.strftime("%H:%M")
                     st.session_state.messages.append({
@@ -3880,6 +3878,24 @@ for i, msg in enumerate(st.session_state.messages):
                     })
                     start_escalation_triage(append_welcome=False)
                     st.rerun()
+                
+                if len(parts) > 1 and parts[1].strip():
+                    st.markdown(parts[1], unsafe_allow_html=True)
+            else:
+                st.markdown(display_content, unsafe_allow_html=True)
+                # Fallback in case the banner is present but without the split comment marker
+                if role == "assistant" and "recommended-troubleshooting-banner" in display_content:
+                    st.markdown('<div class="skip-btn-marker"></div>', unsafe_allow_html=True)
+                    if st.button("Skip Directly to Ticket Creation", key=f"skip_trouble_{i}"):
+                        ts_now = time.strftime("%H:%M")
+                        st.session_state.messages.append({
+                            "role": "user",
+                            "content": "Skip Directly to Ticket Creation",
+                            "timestamp": ts_now,
+                            "blocked": False
+                        })
+                        start_escalation_triage(append_welcome=False)
+                        st.rerun()
 
             # Render optional image attachment if present in the message
             if msg.get("attachment_b64"):

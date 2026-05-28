@@ -332,13 +332,15 @@ html, body, [class*="css"] {
   padding-right: 24px !important;
 }
 
-/* Active Cases button — restore original red pill size/style explicitly */
-[data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] .stButton > button {
+/* Active Cases button — ID marker approach (same as outage buttons fix).
+   :has(#active-cases-marker) on the stVerticalBlock has specificity 1-1-1,
+   guaranteed to beat the global .stButton rule. */
+div[data-testid="stVerticalBlock"]:has(#active-cases-marker) .stButton > button {
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%) !important;
   color: white !important;
   border: none !important;
   border-radius: 24px !important;
+  font-family: 'Inter', sans-serif !important;
   font-weight: 600 !important;
   padding: 10px 22px !important;
   font-size: 13px !important;
@@ -348,9 +350,9 @@ html, body, [class*="css"] {
   white-space: nowrap !important;
   width: 100% !important;
   box-shadow: none !important;
+  transition: opacity .2s, transform .15s !important;
 }
-[data-testid="stMarkdownContainer"]:has(#header-sentinel)
-  + [data-testid="stHorizontalBlock"] .stButton > button:hover {
+div[data-testid="stVerticalBlock"]:has(#active-cases-marker) .stButton > button:hover {
   opacity: 0.9 !important;
   box-shadow: 0 0 0 2px #ffc72c !important;
   transform: none !important;
@@ -3353,6 +3355,7 @@ with col_metric:
         1 for t in active_tickets
         if (t.get("status") or t.get("state") or "").strip().lower() != "closed"
     )
+    st.markdown('<div id="active-cases-marker"></div>', unsafe_allow_html=True)
     metric_btn_clicked = st.button(
         f"📋 Active Cases: {active_count}",
         key="header_active_cases_btn",

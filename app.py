@@ -2078,11 +2078,18 @@ def clean_assistant_message(content: str, msg_idx: int | None = None) -> str:
             pattern = re.compile(re.escape(salvo_text) + r"\.?", re.IGNORECASE)
             replacement = (
                 '<div class="recommended-troubleshooting-banner" style="background: rgba(218, 41, 28, 0.08); border: 1px solid rgba(255, 199, 44, 0.3); '
-                'border-left: 4px solid var(--accent); padding: 12px 14px 45px 14px; border-radius: 8px; margin: 10px 0; '
-                'font-size: 13.5px; line-height: 1.5; color: var(--text-primary); position: relative;">'
+                'border-left: 4px solid var(--accent); padding: 12px 14px 14px 14px; border-radius: 8px; margin: 10px 0; '
+                'font-size: 13.5px; line-height: 1.5; color: var(--text-primary);">'
                 '⚡ <b>Recommended Troubleshooting</b><br/>'
                 'There are some common troubleshooting steps that might help you fix this issue on your own. '
                 'We will quickly step through them to see if this solves the issue.'
+                '<br/><div style="margin-top: 10px;">'
+                '<a href="?skip_to_ticket=1" style="display: inline-block; background: #1e2130; '
+                'border: 1px solid rgba(255,255,255,.14); color: #8892a4; font-size: 11px; font-weight: 600; '
+                'border-radius: 5px; padding: 4px 10px; text-decoration: none; letter-spacing: 0.2px;">'
+                'Skip Directly to Ticket Creation'
+                '</a>'
+                '</div>'
                 '</div>'
             )
             content = pattern.sub(replacement, content)

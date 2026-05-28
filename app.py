@@ -650,7 +650,7 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) {
   border: 1px solid rgba(255, 180, 0, 0.22) !important;
   background: rgba(255, 160, 0, 0.04) !important;
   border-radius: 10px !important;
-  padding: 10px 12px !important;
+  padding: 6px 12px 10px 12px !important;
   margin-bottom: 8px !important;
   box-shadow: none !important;
 }
@@ -685,20 +685,26 @@ div[data-testid="stVerticalBlock"]:has(#outage-action-col) .stButton > button:ho
 }
 
 
-/* ── Demo gear button ─────────────────────────────────────────────────────── */
-div[data-testid="stVerticalBlock"]:has(#demo-gear-col) .stButton > button {
+/* ── Demo gear and restore MIM buttons ───────────────────────────────────── */
+div[data-testid="stVerticalBlock"]:has(#demo-gear-col) .stButton > button,
+div[data-testid="stVerticalBlock"]:has(#restore-mim-col) .stButton > button {
   background: transparent !important;
   border: 1px solid rgba(255,255,255,0.10) !important;
   color: #8892a4 !important;
-  font-size: 15px !important;
+  font-size: 16px !important;
   line-height: 1 !important;
-  padding: 6px 8px !important;
-  min-height: 34px !important;
-  height: 34px !important;
+  padding: 0 !important;
+  min-height: 36px !important;
+  height: 36px !important;
+  width: 100% !important;
   box-shadow: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   transition: background 0.15s, color 0.15s !important;
 }
-div[data-testid="stVerticalBlock"]:has(#demo-gear-col) .stButton > button:hover {
+div[data-testid="stVerticalBlock"]:has(#demo-gear-col) .stButton > button:hover,
+div[data-testid="stVerticalBlock"]:has(#restore-mim-col) .stButton > button:hover {
   background: var(--bg-card) !important;
   color: var(--text-primary) !important;
   border-color: rgba(255,255,255,0.2) !important;
@@ -3465,9 +3471,9 @@ if active_mims:
 
 # Three-column header: brand | store | active-cases  (or brand | store | cases | ⚠️)
 if has_dismissed_mim:
-    col_logo, col_store, col_metric, col_mim, col_gear = st.columns([1.2, 1.5, 1.5, 0.25, 0.25], gap="small")
+    col_logo, col_store, col_metric, col_mim, col_gear = st.columns([1.2, 1.5, 1.5, 0.25, 0.25], gap="small", vertical_alignment="center")
 else:
-    col_logo, col_store, col_metric, col_gear = st.columns([1.2, 1.5, 1.5, 0.25], gap="small")
+    col_logo, col_store, col_metric, col_gear = st.columns([1.2, 1.5, 1.5, 0.25], gap="small", vertical_alignment="center")
 
 with col_logo:
     st.markdown(
@@ -3509,6 +3515,7 @@ with col_metric:
 
 if has_dismissed_mim:
     with col_mim:
+        st.markdown('<div id="restore-mim-col"></div>', unsafe_allow_html=True)
         restore_clicked = st.button("⚠️", key="restore_mim_button", help="Restore outage banner")
         if restore_clicked:
             st.session_state.mim_dismissed[dismissed_mim_id] = False
@@ -3586,11 +3593,11 @@ if st.session_state.get("active_mims"):
         mim_desc  = mim.get('description', '')
 
         with st.container(border=True):
-            st.markdown('<div class="active-outage-box"></div>', unsafe_allow_html=True)
             col_left, col_right = st.columns([3, 1], gap="small", vertical_alignment="center")
             with col_left:
                 st.markdown(
                     f"""
+                    <div class="active-outage-box"></div>
                     <div class="outage-banner-title">⚡ Active Outage: {mim_title}</div>
                     <div class="outage-banner-desc">{mim_desc}</div>
                     """,

@@ -183,12 +183,22 @@ st.markdown(
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 
-/* ── Sidebar toggle arrow — styled to match the dark theme ─────────────────── */
+/* ── Sidebar toggle arrow — visible pill at the top-left edge ──────────── */
 [data-testid="collapsedControl"] {
+  background: var(--bg-panel) !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+  border-left: none !important;
+  border-radius: 0 8px 8px 0 !important;
   color: var(--text-muted) !important;
+  padding: 8px 7px !important;
+  top: 82px !important;
+  opacity: 1 !important;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s !important;
 }
 [data-testid="collapsedControl"]:hover {
+  background: var(--bg-card) !important;
   color: var(--text-primary) !important;
+  box-shadow: 2px 0 8px rgba(0,0,0,0.4) !important;
 }
 
 /* ── Root tokens ─────────────────────────────────────────────────────────── */

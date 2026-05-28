@@ -837,16 +837,21 @@ div.chips-sentinel + div[data-testid="stHorizontalBlock"] button:hover {
 }
 
 /* ── Recommended Troubleshooting Banner — skip button positioned inside via .skip-btn-marker */
-div:has(> .skip-btn-marker) + div div[data-testid="stButton"],
-div[data-testid="stVerticalBlock"]:has(.skip-btn-marker) div[data-testid="stButton"] {
-  margin-top: -46px !important;
+/* Hide the element container wrapping the skip button marker so it doesn't take space */
+div[data-testid="element-container"]:has(.skip-btn-marker) {
+  display: none !important;
+}
+
+/* Target the element-container containing the button immediately following the marker container */
+div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="element-container"] {
+  margin-top: -38px !important;
   padding-left: 14px !important;
   padding-bottom: 6px !important;
   position: relative !important;
   z-index: 5 !important;
 }
-div:has(> .skip-btn-marker) + div div[data-testid="stButton"] button,
-div[data-testid="stVerticalBlock"]:has(.skip-btn-marker) div[data-testid="stButton"] button {
+
+div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="element-container"] button {
   background: #1e2130 !important;
   color: #8892a4 !important;
   border: 1px solid rgba(255,255,255,.14) !important;
@@ -862,12 +867,13 @@ div[data-testid="stVerticalBlock"]:has(.skip-btn-marker) div[data-testid="stButt
   letter-spacing: 0.2px !important;
   transition: background 0.15s, color 0.15s !important;
 }
-div:has(> .skip-btn-marker) + div div[data-testid="stButton"] button:hover,
-div[data-testid="stVerticalBlock"]:has(.skip-btn-marker) div[data-testid="stButton"] button:hover {
+
+div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="element-container"] button:hover {
   background: #262b3e !important;
   color: #c0c6d6 !important;
   border-color: rgba(255,255,255,.22) !important;
 }
+
 
 
 /* ── Hide Streamlit chrome ───────────────────────────────────────────────── */

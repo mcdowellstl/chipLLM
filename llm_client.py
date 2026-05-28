@@ -15,6 +15,7 @@ import os
 import re
 import random
 import string
+import time
 from datetime import datetime
 
 import streamlit as st
@@ -728,12 +729,29 @@ class ChipLLMClient:
         """
         Convert the Streamlit session message list into the SDK Content format.
         Optionally injects RAG context into the final user turn.
+
+        Token-optimization notes:
+        - RAG context is capped at MAX_RAG_CHARS to prevent bloated playbooks.
+        - Long assistant messages in history are truncated to MAX_MSG_CHARS
+          so that detail views / ticket lists don't compound across turns.
         """
+        # --- Cap RAG context to limit token usage ---
+        MAX_RAG_CHARS = 10_000
+        if rag_context and len(rag_context) > MAX_RAG_CHARS:
+            rag_context = rag_context[:MAX_RAG_CHARS] + "\n[...playbook truncated for token efficiency]"
+
         contents: list[genai_types.Content] = []
+
+        # Max characters per historical assistant message (~500 tokens)
+        MAX_MSG_CHARS = 2_000
 
         for i, msg in enumerate(messages):
             role = "user" if msg["role"] == "user" else "model"
             text = msg["content"]
+
+            # Truncate long historical assistant messages (not the final user turn)
+            if role == "model" and i < len(messages) - 1 and len(text) > MAX_MSG_CHARS:
+                text = text[:MAX_MSG_CHARS] + " [...]"
 
             # Inject RAG context into the most recent user message
             if i == len(messages) - 1 and role == "user":
@@ -818,7 +836,19 @@ class ChipLLMClient:
         """
         Generator that yields text chunks from a streaming Vertex AI response.
         Handles function calling / tools for get_active_tickets.
+
+        Token-optimization notes:
+        - History is trimmed to MAX_HISTORY_TURNS before building contents.
+          The first message (greeting anchor) is always preserved.
+        - 429 errors are retried up to MAX_API_RETRIES times with exponential
+          backoff before surfacing the error to the caller.
         """
+        # --- Sliding history window to cap token usage ---
+        MAX_HISTORY_TURNS = 20  # 10 user + 10 assistant exchanges
+        if len(messages) > MAX_HISTORY_TURNS:
+            # Keep first message as context anchor + most recent turns
+            messages = messages[:1] + messages[-(MAX_HISTORY_TURNS - 1):]
+
         contents = self.build_contents(messages, rag_context)
 
         config = genai_types.GenerateContentConfig(
@@ -833,12 +863,24 @@ class ChipLLMClient:
         remote_calls_count = 0
         max_remote_calls = 30
 
+        MAX_API_RETRIES = 2
+
         while remote_calls_count < max_remote_calls:
-            response_stream = self._client.models.generate_content_stream(
-                model=self._model,
-                contents=contents,
-                config=config,
-            )
+            # Retry loop for transient 429 / rate-limit errors
+            for _attempt in range(MAX_API_RETRIES + 1):
+                try:
+                    response_stream = self._client.models.generate_content_stream(
+                        model=self._model,
+                        contents=contents,
+                        config=config,
+                    )
+                    break  # success — exit retry loop
+                except Exception as _retry_exc:
+                    if "429" in str(_retry_exc) and _attempt < MAX_API_RETRIES:
+                        _backoff = 2 ** _attempt  # 1s, then 2s
+                        time.sleep(_backoff)
+                        continue
+                    raise  # non-429 or retries exhausted — propagate
 
             tool_calls = []
             iteration_text = ""
@@ -917,21 +959,32 @@ class ChipLLMClient:
         """
         Generate a natural follow-up question from the live agent (e.g. Casey, Jordan)
         after they have finished reviewing the case details.
+
+        Token-optimization: only the last 8 messages are included in the prompt,
+        and triage_data values are capped at 300 chars to avoid sending large
+        structured logs into what is effectively a single-question generation call.
         """
+        MAX_TRIAGE_VAL_CHARS = 300
         context_str = "TRIAGE DATA:\n"
         for k, v in triage_data.items():
             if "base64" in k.lower():
                 continue
-            context_str += f"- {k}: {v}\n"
+            v_str = str(v)
+            if len(v_str) > MAX_TRIAGE_VAL_CHARS:
+                v_str = v_str[:MAX_TRIAGE_VAL_CHARS] + "..."
+            context_str += f"- {k}: {v_str}\n"
         context_str += f"\nUSER'S ESCALATION NOTES:\n{user_notes}\n"
-        
+
+        # Only send recent context — agent question only needs the last few exchanges
+        recent_messages = messages[-8:] if len(messages) > 8 else messages
+
         prompt = (
             f"You are {agent_name}, a live tech support engineer at the restaurant chain.\n"
             f"Review the following restaurant triage session details:\n\n"
             f"{context_str}\n"
-            f"Here is the chat history between the manager and the virtual assistant:\n"
+            f"Here is the recent chat history between the manager and the virtual assistant:\n"
         )
-        for msg in messages:
+        for msg in recent_messages:
             role_name = "Manager" if msg["role"] == "user" else "Assistant"
             prompt += f"{role_name}: {msg['content']}\n"
             
@@ -963,10 +1016,16 @@ class ChipLLMClient:
         """
         Generate a concise, informative description of the technical issue/symptom
         based on the active conversation history. (Max 10 words, direct summary).
+
+        Token-optimization: only the last 6 messages are used — that's 3 exchanges,
+        which is always sufficient to extract the device + symptom.
         """
+        # Only send recent context — full history not needed for a 10-word label
+        recent_messages = messages[-6:] if len(messages) > 6 else messages
+
         # Format conversation history as a single text block
         history_text = ""
-        for msg in messages:
+        for msg in recent_messages:
             role = "Manager" if msg["role"] == "user" else "ChipLLM"
             history_text += f"{role}: {msg['content']}\n"
 

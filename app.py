@@ -847,6 +847,16 @@ if _demo_lang_prev != _demo_lang_now:
     st.session_state.needs_reset = True
     st.rerun()
 
+# ---------------------------------------------------------------------------
+# Demo personality change detection — reset chat when slider changes
+# ---------------------------------------------------------------------------
+_demo_pers_prev = st.session_state.get("_demo_personality_prev", "Normal")
+_demo_pers_now  = st.session_state.get("demo_personality", "Normal")
+if _demo_pers_prev != _demo_pers_now:
+    st.session_state._demo_personality_prev = _demo_pers_now
+    st.session_state.needs_reset = True
+    st.rerun()
+
 if "ticket_metadata" not in st.session_state:
     st.session_state.ticket_metadata = None
 
@@ -3639,13 +3649,18 @@ if not st.session_state.messages:
         "blocked": False
     })
 
-# ---------------------------------------------------------------------------
-# Render conversation history
-# ---------------------------------------------------------------------------
+# Determine dynamic assistant avatar based on chosen demo_personality
+_pers_for_avatar = st.session_state.get("demo_personality", "Normal")
+if _pers_for_avatar == "Casual":
+    assistant_avatar = "🍟"
+elif _pers_for_avatar == "Unhinged":
+    assistant_avatar = "😬"
+else:
+    assistant_avatar = "🍔"
 
 for i, msg in enumerate(st.session_state.messages):
     role = msg["role"]
-    avatar = "👤" if role == "user" else "👨‍💻"
+    avatar = "👤" if role == "user" else assistant_avatar
     
     with st.chat_message(role, avatar=avatar):
         if msg.get("blocked", False):
@@ -3777,7 +3792,7 @@ def render_extra_context_form() -> None:
         st.rerun()
 
 if st.session_state.get("escalation_stage") == "acknowledged":
-    with st.chat_message("assistant", avatar="👨‍💻"):
+    with st.chat_message("assistant", avatar=assistant_avatar):
         render_extra_context_form()
 
 # ---------------------------------------------------------------------------
@@ -3842,7 +3857,7 @@ _triage_active = st.session_state.get("escalation_triage_active", False)
 _triage_step = st.session_state.get("escalation_triage_step")
 
 if _triage_active:
-    with st.chat_message("assistant", avatar="👨‍💻"):
+    with st.chat_message("assistant", avatar=assistant_avatar):
         if _triage_step == "priority_form":
             render_priority_form()
         elif _triage_step == "device_form":
@@ -3854,7 +3869,7 @@ if _triage_active:
 
 elif st.session_state.ticket_collection_active:
     is_live_agent = st.session_state.get("ticket_collection_is_agent", False)
-    with st.chat_message("assistant", avatar="👨‍💻"):
+    with st.chat_message("assistant", avatar=assistant_avatar):
         render_ticket_collection_form(is_live_agent=is_live_agent)
 
 # ---------------------------------------------------------------------------
@@ -4355,7 +4370,7 @@ if user_input:
 
 
         # --- Layer 4: LLM call (streaming) -------------------------------------
-        with st.chat_message("assistant", avatar="👨‍💻"):
+        with st.chat_message("assistant", avatar=assistant_avatar):
             full_response = ""
             response_placeholder = st.empty()
             if is_ticket_status_lookup_intent(user_input):
@@ -4387,6 +4402,9 @@ if user_input:
                             f"Keep responses relatively concise and do not repeat your initial greeting."
                         )
 
+                if sys_inst is None:
+                    sys_inst = get_system_instructions(st.session_state.get("demo_personality", "Normal"))
+
                 # Inject language directive for Spanish demo mode
                 if st.session_state.get("demo_language") == "Spanish":
                     _lang_directive = (
@@ -4397,10 +4415,7 @@ if user_input:
                         "Technical terms without a common Spanish equivalent may remain in English, but wrap them in a brief Spanish explanation. "
                         "Do NOT switch to English under any circumstances."
                     )
-                    if sys_inst is None:
-                        sys_inst = get_system_instructions() + _lang_directive
-                    else:
-                        sys_inst = sys_inst + _lang_directive
+                    sys_inst = sys_inst + _lang_directive
                 for chunk in client.stream_response(
                     messages=st.session_state.messages,
                     rag_context=rag_context,

@@ -275,47 +275,59 @@ When a user asks a **Restaurant Operations & Food Safety** question, do NOT trig
 
 
 @st.cache_data(ttl=300)
-def get_system_instructions() -> str:
+def get_system_instructions(personality: str = "Normal") -> str:
     """
-    Treats SYSTEM_INSTRUCTIONS_BUCKET as a directory of persona/config files.
-    Iterates all .txt and .md blobs, sorts them alphabetically for a
-    deterministic merge order, and concatenates into a single master string.
-    Falls back to the hardcoded SYSTEM_PROMPT on any failure or empty bucket.
+    Downloads the system instruction file matching the specified personality
+    (e.g., 'system_instruction_normal.txt', 'system_instruction_casual.txt',
+    or 'system_instruction_unhinged.txt') from GCS.
+    Falls back to local file if download fails, and finally to hardcoded SYSTEM_PROMPT.
     """
-    bucket_name = os.environ.get("SYSTEM_INSTRUCTIONS_BUCKET", "chipllm-instructions").removeprefix("gs://")
-    section_sep = "\n\n---NEW_SECTION---\n\n"
-    try:
-        from google.cloud import storage as _storage
-        client = _storage.Client()
-        blobs = sorted(
-            [
-                b for b in client.list_blobs(bucket_name)
-                if b.name.endswith(".txt") or b.name.endswith(".md")
-            ],
-            key=lambda b: b.name,
-        )
-        if not blobs:
-            return SYSTEM_PROMPT
+    personality = personality or "Normal"
+    personality_clean = personality.strip().capitalize()
+    if personality_clean not in ["Normal", "Casual", "Unhinged"]:
+        personality_clean = "Normal"
 
-        sections: list[str] = []
-        for blob in blobs:
-            try:
+    filenames = []
+    if personality_clean == "Normal":
+        filenames = ["system_instruction_normal.txt"]
+    elif personality_clean == "Casual":
+        filenames = ["system_instruction_casual.txt", "system_instruction.txt"]
+    elif personality_clean == "Unhinged":
+        filenames = ["system_instruction_unhinged.txt", "system_instruction_inhinged.txt"]
+    else:
+        filenames = ["system_instruction_normal.txt"]
+
+    bucket_name = os.environ.get("SYSTEM_INSTRUCTIONS_BUCKET", "chipllm-instructions").removeprefix("gs://")
+
+    # Try GCS first
+    for name in filenames:
+        try:
+            from google.cloud import storage as _storage
+            client = _storage.Client()
+            bucket = client.bucket(bucket_name)
+            blob = bucket.blob(name)
+            if blob.exists():
                 text = blob.download_as_text().strip()
                 if text:
-                    sections.append(text)
-            except Exception as blob_err:
-                try:
-                    st.warning(f"Skipping gs://{bucket_name}/{blob.name}: {blob_err}")
-                except Exception:
-                    print(f"Skipping gs://{bucket_name}/{blob.name}: {blob_err}")
+                    return text
+        except Exception as err:
+            try:
+                st.warning(f"Failed to load {name} from gs://{bucket_name}: {err}")
+            except Exception:
+                print(f"Failed to load {name} from gs://{bucket_name}: {err}")
 
-        if sections:
-            return section_sep.join(sections)
-    except Exception as err:
+    # Fallback to local files next
+    for name in filenames:
         try:
-            st.warning(f"Failed to load system instructions from gs://{bucket_name}: {err}")
-        except Exception:
-            print(f"Failed to load system instructions from gs://{bucket_name}: {err}")
+            import os as _os
+            local_path = _os.path.join(_os.path.dirname(__file__), name)
+            if _os.path.exists(local_path):
+                with open(local_path, "r", encoding="utf-8") as f:
+                    text = f.read().strip()
+                    if text:
+                        return text
+        except Exception as local_err:
+            pass
 
     return SYSTEM_PROMPT
 
@@ -805,7 +817,7 @@ class ChipLLMClient:
         contents = self.build_contents(messages, rag_context)
 
         config = genai_types.GenerateContentConfig(
-            system_instruction=system_instruction if system_instruction is not None else get_system_instructions(),
+            system_instruction=system_instruction if system_instruction is not None else get_system_instructions(st.session_state.get("demo_personality", "Normal")),
             temperature=0.3,
             max_output_tokens=1024,
             top_p=0.9,

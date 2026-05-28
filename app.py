@@ -636,6 +636,7 @@ div[data-testid="element-container"]:has(div.metric-btn-marker) + div[data-testi
   font-weight: 700;
   color: #f5c842;
   line-height: 1.3;
+  margin-top: 0 !important;
   margin-bottom: 4px;
 }
 
@@ -650,9 +651,24 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) {
   border: 1px solid rgba(255, 180, 0, 0.22) !important;
   background: rgba(255, 160, 0, 0.04) !important;
   border-radius: 10px !important;
-  padding: 6px 12px 10px 12px !important;
+  padding: 3px 12px 6px 12px !important;
   margin-bottom: 8px !important;
   box-shadow: none !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) div[data-testid="element-container"] {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) [data-testid="stMarkdownContainer"] {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(div.active-outage-box) [data-testid="stMarkdownContainer"] p {
+  margin-top: 0 !important;
+  margin-bottom: 4px !important;
 }
 
 /* Outage action buttons — :has(#id) on the shared stVerticalBlock parent
@@ -686,33 +702,69 @@ div[data-testid="stVerticalBlock"]:has(#outage-action-col) .stButton > button:ho
 
 
 /* ── Demo gear and restore MIM buttons ───────────────────────────────────── */
-div[data-testid="stVerticalBlock"]:has(#demo-gear-col) .stButton > button,
-div[data-testid="stVerticalBlock"]:has(#restore-mim-col) .stButton > button {
-  background: transparent !important;
+/* Completely hide the element-containers wrapping the markdown markers so they take 0 space and don't offset buttons */
+div[data-testid="element-container"]:has(#demo-gear-col),
+div[data-testid="element-container"]:has(#restore-mim-col) {
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
   border: none !important;
+}
+
+div[data-testid="stColumn"]:has(#demo-gear-col) .stButton,
+div[data-testid="stColumn"]:has(#restore-mim-col) .stButton {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 36px !important;
+}
+
+div[data-testid="stColumn"]:has(#demo-gear-col) button,
+div[data-testid="stColumn"]:has(#restore-mim-col) button {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  border-color: transparent !important;
   color: #8892a4 !important;
   line-height: 1 !important;
   padding: 0 !important;
+  margin: 0 !important;
   min-height: 36px !important;
   height: 36px !important;
   width: 100% !important;
   box-shadow: none !important;
+  outline: none !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  transition: color 0.15s !important;
+  transition: color 0.15s, transform 0.1s !important;
 }
-div[data-testid="stVerticalBlock"]:has(#restore-mim-col) .stButton > button {
-  font-size: 18px !important;
+
+div[data-testid="stColumn"]:has(#restore-mim-col) button {
+  font-size: 22px !important;
 }
-div[data-testid="stVerticalBlock"]:has(#demo-gear-col) .stButton > button {
-  font-size: 20px !important;
+
+div[data-testid="stColumn"]:has(#demo-gear-col) button {
+  font-size: 26px !important;
 }
-div[data-testid="stVerticalBlock"]:has(#demo-gear-col) .stButton > button:hover,
-div[data-testid="stVerticalBlock"]:has(#restore-mim-col) .stButton > button:hover {
+
+div[data-testid="stColumn"]:has(#demo-gear-col) button:hover,
+div[data-testid="stColumn"]:has(#restore-mim-col) button:hover,
+div[data-testid="stColumn"]:has(#demo-gear-col) button:active,
+div[data-testid="stColumn"]:has(#restore-mim-col) button:active,
+div[data-testid="stColumn"]:has(#demo-gear-col) button:focus,
+div[data-testid="stColumn"]:has(#restore-mim-col) button:focus {
   background: transparent !important;
+  background-color: transparent !important;
   color: var(--text-primary) !important;
   border: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 /* ── Streamlit default markdown in chat ──────────────────────────────────── */
@@ -3530,7 +3582,7 @@ with col_gear:
     st.markdown('<div id="demo-gear-col"></div>', unsafe_allow_html=True)
     if "demo_panel_open" not in st.session_state:
         st.session_state.demo_panel_open = False
-    gear_label = "✕" if st.session_state.demo_panel_open else "⚙"
+    gear_label = "✕" if st.session_state.demo_panel_open else "⚙️"
     if st.button(gear_label, key="demo_gear_btn", use_container_width=True, help="Demo Controls"):
         st.session_state.demo_panel_open = not st.session_state.demo_panel_open
         st.rerun()

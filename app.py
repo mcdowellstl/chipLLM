@@ -685,6 +685,25 @@ div[data-testid="stVerticalBlock"]:has(#outage-action-col) .stButton > button:ho
 }
 
 
+/* ── Demo gear button ─────────────────────────────────────────────────────── */
+div[data-testid="stVerticalBlock"]:has(#demo-gear-col) .stButton > button {
+  background: transparent !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
+  color: #8892a4 !important;
+  font-size: 15px !important;
+  line-height: 1 !important;
+  padding: 6px 8px !important;
+  min-height: 34px !important;
+  height: 34px !important;
+  box-shadow: none !important;
+  transition: background 0.15s, color 0.15s !important;
+}
+div[data-testid="stVerticalBlock"]:has(#demo-gear-col) .stButton > button:hover {
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border-color: rgba(255,255,255,0.2) !important;
+}
+
 /* ── Streamlit default markdown in chat ──────────────────────────────────── */
 .stMarkdown p { margin: 0 0 6px; }
 .stMarkdown ol, .stMarkdown ul { padding-left: 18px; margin: 4px 0; }
@@ -3426,9 +3445,9 @@ if active_mims:
 
 # Three-column header: brand | store | active-cases  (or brand | store | cases | ⚠️)
 if has_dismissed_mim:
-    col_logo, col_store, col_metric, col_mim = st.columns([1.2, 1.5, 1.5, 0.3], gap="small")
+    col_logo, col_store, col_metric, col_mim, col_gear = st.columns([1.2, 1.5, 1.5, 0.25, 0.25], gap="small")
 else:
-    col_logo, col_store, col_metric = st.columns([1.2, 1.5, 1.5], gap="small")
+    col_logo, col_store, col_metric, col_gear = st.columns([1.2, 1.5, 1.5, 0.25], gap="small")
 
 with col_logo:
     st.markdown(
@@ -3474,6 +3493,62 @@ if has_dismissed_mim:
         if restore_clicked:
             st.session_state.mim_dismissed[dismissed_mim_id] = False
             st.rerun()
+
+with col_gear:
+    st.markdown('<div id="demo-gear-col"></div>', unsafe_allow_html=True)
+    if "demo_panel_open" not in st.session_state:
+        st.session_state.demo_panel_open = False
+    gear_label = "✕" if st.session_state.demo_panel_open else "⚙"
+    if st.button(gear_label, key="demo_gear_btn", use_container_width=True, help="Demo Controls"):
+        st.session_state.demo_panel_open = not st.session_state.demo_panel_open
+        st.rerun()
+
+# ---------------------------------------------------------------------------
+# Demo Controls panel (inline, toggled by gear button)
+# ---------------------------------------------------------------------------
+if st.session_state.get("demo_panel_open", False):
+    with st.container():
+        st.markdown(
+            '<div style="background:var(--bg-panel);border:1px solid rgba(255,255,255,0.09);'
+            'border-radius:10px;padding:16px 20px 12px;margin:6px 0 10px;'
+            'box-shadow:0 4px 24px rgba(0,0,0,0.4);">'
+            '<div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;'
+            'color:#8892a4;margin-bottom:14px;">&#9881;&#65039;&nbsp;&nbsp;Demo Controls</div>',
+            unsafe_allow_html=True,
+        )
+        dc1, dc2, dc3 = st.columns(3, gap="medium")
+        with dc1:
+            st.caption("Personality")
+            st.session_state.demo_personality = st.select_slider(
+                "Personality",
+                options=["Normal", "Casual", "Unhinged"],
+                value=st.session_state.get("demo_personality", "Normal"),
+                key="demo_personality_slider",
+                label_visibility="collapsed",
+            )
+        with dc2:
+            st.caption("Capability")
+            st.session_state.demo_capability = st.select_slider(
+                "Capability",
+                options=["Current", "Automation"],
+                value=st.session_state.get("demo_capability", "Current"),
+                key="demo_capability_slider",
+                label_visibility="collapsed",
+            )
+        with dc3:
+            st.caption("Language")
+            st.session_state.demo_language = st.select_slider(
+                "Language",
+                options=["English", "Spanish"],
+                value=st.session_state.get("demo_language", "English"),
+                key="demo_language_slider",
+                label_visibility="collapsed",
+            )
+        st.markdown(
+            '<div style="font-size:10px;color:#3a4258;margin-top:8px;">'
+            'Demo controls only &mdash; not wired to production behavior yet.</div></div>',
+            unsafe_allow_html=True,
+        )
 
 # ---------------------------------------------------------------------------
 # Major Outages / MIMs Alert
@@ -3545,68 +3620,6 @@ if not st.session_state.messages:
         "timestamp": time.strftime("%H:%M"),
         "blocked": False
     })
-
-# ---------------------------------------------------------------------------
-# Demo Controls sidebar (collapsed by default)
-# ---------------------------------------------------------------------------
-
-with st.sidebar:
-    st.markdown(
-        '<div style="font-size:11px;font-weight:700;letter-spacing:1px;'
-        'text-transform:uppercase;color:#8892a4;padding-bottom:10px;'
-        'border-bottom:1px solid rgba(255,255,255,0.07);margin-bottom:14px;">'
-        '&#9881;&#65039;&nbsp;&nbsp;Demo Controls'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    # 1. Personality
-    st.markdown(
-        '<div class="sidebar-section-label">Personality</div>',
-        unsafe_allow_html=True,
-    )
-    st.session_state.demo_personality = st.select_slider(
-        "Personality",
-        options=["Normal", "Casual", "Unhinged"],
-        value=st.session_state.get("demo_personality", "Normal"),
-        key="demo_personality_slider",
-        label_visibility="collapsed",
-    )
-
-    # 2. Capability
-    st.markdown(
-        '<div class="sidebar-section-label">Capability</div>',
-        unsafe_allow_html=True,
-    )
-    st.session_state.demo_capability = st.select_slider(
-        "Capability",
-        options=["Current", "Automation"],
-        value=st.session_state.get("demo_capability", "Current"),
-        key="demo_capability_slider",
-        label_visibility="collapsed",
-    )
-
-    # 3. Language
-    st.markdown(
-        '<div class="sidebar-section-label">Language</div>',
-        unsafe_allow_html=True,
-    )
-    st.session_state.demo_language = st.select_slider(
-        "Language",
-        options=["English", "Spanish"],
-        value=st.session_state.get("demo_language", "English"),
-        key="demo_language_slider",
-        label_visibility="collapsed",
-    )
-
-    st.markdown(
-        '<div style="margin-top:24px;padding-top:12px;'
-        'border-top:1px solid rgba(255,255,255,0.06);'
-        'font-size:10px;color:#3a4258;line-height:1.6;">'
-        'Demo controls only &mdash; changes are not wired to production behavior yet.'
-        '</div>',
-        unsafe_allow_html=True,
-    )
 
 # ---------------------------------------------------------------------------
 # Render conversation history

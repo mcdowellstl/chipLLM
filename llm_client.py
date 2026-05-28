@@ -836,11 +836,21 @@ class ChipLLMClient:
             )
 
             tool_calls = []
+            iteration_text = ""
             for chunk in response_stream:
                 if chunk.function_calls:
                     tool_calls.extend(chunk.function_calls)
-                if chunk.text:
-                    yield chunk.text
+                
+                chunk_text = ""
+                if chunk.candidates:
+                    for candidate in chunk.candidates:
+                        if candidate.content and candidate.content.parts:
+                            for part in candidate.content.parts:
+                                if part.text:
+                                    chunk_text += part.text
+                if chunk_text:
+                    iteration_text += chunk_text
+                    yield chunk_text
 
             if not tool_calls:
                 break
@@ -875,9 +885,14 @@ class ChipLLMClient:
                     )
                 )
 
+            model_parts = []
+            if iteration_text:
+                model_parts.append(genai_types.Part(text=iteration_text))
+            model_parts.extend([genai_types.Part(function_call=tc) for tc in tool_calls])
+
             model_turn = genai_types.Content(
                 role="model",
-                parts=[genai_types.Part(function_call=tc) for tc in tool_calls]
+                parts=model_parts
             )
             contents.append(model_turn)
 

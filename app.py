@@ -332,7 +332,29 @@ html, body, [class*="css"] {
   padding-right: 24px !important;
 }
 
-/* Active Cases button — inherits the global red pill style intentionally */
+/* Active Cases button — restore original red pill size/style explicitly */
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] .stButton > button {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 24px !important;
+  font-weight: 600 !important;
+  padding: 10px 22px !important;
+  font-size: 13px !important;
+  min-height: 44px !important;
+  height: auto !important;
+  letter-spacing: 0.3px !important;
+  white-space: nowrap !important;
+  width: 100% !important;
+  box-shadow: none !important;
+}
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] .stButton > button:hover {
+  opacity: 0.9 !important;
+  box-shadow: 0 0 0 2px #ffc72c !important;
+  transform: none !important;
+}
 
 /* Pulse dot active store status indicator */
 .pulse-dot-active::before {

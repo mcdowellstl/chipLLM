@@ -42,4 +42,4 @@ ENV/
 htmlcov/
 docker-compose.yml
 
-system_instruction.txt
+system_instruction*.txt

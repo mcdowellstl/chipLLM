@@ -672,14 +672,36 @@ div.chips-sentinel + div[data-testid="stHorizontalBlock"] button:hover {
   transform: translateY(-1px) !important;
 }
 
-/* ── Recommended Troubleshooting Banner — skip link lives in the HTML itself */
-.recommended-troubleshooting-banner a {
-  transition: background 0.15s, color 0.15s;
+/* ── Recommended Troubleshooting Banner — skip button positioned inside via :has() */
+/* Target the stButton inside the same stVerticalBlock as the banner + marker.
+   :has() with two class/id conditions gives 0-2-1 specificity — enough to beat defaults. */
+div[data-testid="stVerticalBlock"]:has(.recommended-troubleshooting-banner):has(#skip-btn-marker) div[data-testid="stButton"] {
+  margin-top: -40px !important;
+  padding-left: 14px !important;
+  padding-bottom: 6px !important;
+  position: relative !important;
+  z-index: 5 !important;
 }
-.recommended-troubleshooting-banner a:hover {
+div[data-testid="stVerticalBlock"]:has(.recommended-troubleshooting-banner):has(#skip-btn-marker) div[data-testid="stButton"] button {
+  background: #1e2130 !important;
+  color: #8892a4 !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  border-radius: 5px !important;
+  padding: 4px 10px !important;
+  min-height: 26px !important;
+  height: 26px !important;
+  line-height: 1 !important;
+  width: auto !important;
+  box-shadow: none !important;
+  letter-spacing: 0.2px !important;
+  transition: background 0.15s, color 0.15s !important;
+}
+div[data-testid="stVerticalBlock"]:has(.recommended-troubleshooting-banner):has(#skip-btn-marker) div[data-testid="stButton"] button:hover {
   background: #262b3e !important;
   color: #c0c6d6 !important;
-  border-color: rgba(255,255,255,.2) !important;
+  border-color: rgba(255,255,255,.22) !important;
 }
 
 /* ── Hide Streamlit chrome ───────────────────────────────────────────────── */
@@ -3424,22 +3446,6 @@ if not st.session_state.messages:
     })
 
 # ---------------------------------------------------------------------------
-# Handle skip-to-ticket query param (set by the HTML link inside the banner)
-# ---------------------------------------------------------------------------
-if st.query_params.get("skip_to_ticket"):
-    st.query_params.clear()
-    ts_now = time.strftime("%H:%M")
-    st.session_state.messages.append({
-        "role": "user",
-        "content": "Skip Directly to Ticket Creation",
-        "timestamp": ts_now,
-        "blocked": False
-    })
-    st.session_state.manual_ticket_flow = True
-    start_escalation_triage(append_welcome=False)
-    st.rerun()
-
-# ---------------------------------------------------------------------------
 # Render conversation history
 # ---------------------------------------------------------------------------
 
@@ -3459,7 +3465,23 @@ for i, msg in enumerate(st.session_state.messages):
             if role == "assistant":
                 display_content = clean_assistant_message(display_content, msg_idx=i)
             st.markdown(display_content, unsafe_allow_html=True)
-            
+
+            # Skip button — rendered as a real st.button (preserves session state)
+            # The CSS :has(.recommended-troubleshooting-banner):has(#skip-btn-marker)
+            # pulls it visually inside the banner box using negative margin-top.
+            if role == "assistant" and "recommended-troubleshooting-banner" in display_content:
+                st.markdown('<div id="skip-btn-marker"></div>', unsafe_allow_html=True)
+                if st.button("Skip Directly to Ticket Creation", key=f"skip_trouble_{i}"):
+                    ts_now = time.strftime("%H:%M")
+                    st.session_state.messages.append({
+                        "role": "user",
+                        "content": "Skip Directly to Ticket Creation",
+                        "timestamp": ts_now,
+                        "blocked": False
+                    })
+                    start_escalation_triage(append_welcome=False)
+                    st.rerun()
+
             # Render optional image attachment if present in the message
             if msg.get("attachment_b64"):
                 st.markdown(

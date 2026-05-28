@@ -825,22 +825,29 @@ class ChipLLMClient:
             automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
         )
 
-        response_stream = self._client.models.generate_content_stream(
-            model=self._model,
-            contents=contents,
-            config=config,
-        )
+        remote_calls_count = 0
+        max_remote_calls = 30
 
-        tool_calls = []
-        for chunk in response_stream:
-            if chunk.function_calls:
-                tool_calls.extend(chunk.function_calls)
-            if chunk.text:
-                yield chunk.text
+        while remote_calls_count < max_remote_calls:
+            response_stream = self._client.models.generate_content_stream(
+                model=self._model,
+                contents=contents,
+                config=config,
+            )
 
-        if tool_calls:
+            tool_calls = []
+            for chunk in response_stream:
+                if chunk.function_calls:
+                    tool_calls.extend(chunk.function_calls)
+                if chunk.text:
+                    yield chunk.text
+
+            if not tool_calls:
+                break
+
             function_responses = []
             for tc in tool_calls:
+                remote_calls_count += 1
                 args = dict(tc.args) if tc.args else {}
                 if tc.name == "get_active_tickets":
                     result = get_active_tickets(**args)
@@ -858,6 +865,7 @@ class ChipLLMClient:
                     result = set_alert_visibility(**args)
                 else:
                     result = {"error": f"Unknown tool: {tc.name}"}
+
                 function_responses.append(
                     genai_types.Part(
                         function_response=genai_types.FunctionResponse(
@@ -867,27 +875,17 @@ class ChipLLMClient:
                     )
                 )
 
-            if function_responses:
-                model_turn = genai_types.Content(
-                    role="model",
-                    parts=[genai_types.Part(function_call=tc) for tc in tool_calls]
-                )
-                contents.append(model_turn)
+            model_turn = genai_types.Content(
+                role="model",
+                parts=[genai_types.Part(function_call=tc) for tc in tool_calls]
+            )
+            contents.append(model_turn)
 
-                user_turn = genai_types.Content(
-                    role="user",
-                    parts=function_responses,
-                )
-                contents.append(user_turn)
-
-                second_stream = self._client.models.generate_content_stream(
-                    model=self._model,
-                    contents=contents,
-                    config=config,
-                )
-                for chunk in second_stream:
-                    if chunk.text:
-                        yield chunk.text
+            user_turn = genai_types.Content(
+                role="user",
+                parts=function_responses,
+            )
+            contents.append(user_turn)
 
     def generate_agent_question(
         self,
@@ -929,6 +927,7 @@ class ChipLLMClient:
         config = genai_types.GenerateContentConfig(
             temperature=0.7,
             max_output_tokens=512,
+            automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
         )
         
         response = self._client.models.generate_content(
@@ -968,6 +967,7 @@ class ChipLLMClient:
         config = genai_types.GenerateContentConfig(
             temperature=0.0,
             max_output_tokens=128,
+            automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
         )
 
         response = self._client.models.generate_content(

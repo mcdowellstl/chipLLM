@@ -1894,6 +1894,7 @@ def shorten_choice_via_llm(choice: str, max_chars: int = 15) -> str:
         config = genai_types.GenerateContentConfig(
             temperature=0.0,
             max_output_tokens=50,
+            automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
         )
         response = client._client.models.generate_content(
             model=client._model,

@@ -43,3 +43,9 @@ htmlcov/
 docker-compose.yml
 
 system_instruction*.txt
+
+# Nested git repos — managed independently
+storage/
+
+# Scratch / debug scripts
+scratch/

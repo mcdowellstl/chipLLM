@@ -845,8 +845,8 @@ div[data-testid="element-container"]:has(.skip-btn-marker) {
   overflow: hidden !important;
 }
 
-/* Target the stButton inside any sibling element container that follows the marker container */
-div[data-testid="element-container"]:has(.skip-btn-marker) ~ div[data-testid="element-container"] div[data-testid="stButton"] {
+/* Target the stButton inside the adjacent sibling element container that follows the marker container */
+div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="element-container"] div[data-testid="stButton"] {
   margin-top: -58px !important;
   padding-left: 14px !important;
   padding-bottom: 6px !important;
@@ -854,7 +854,7 @@ div[data-testid="element-container"]:has(.skip-btn-marker) ~ div[data-testid="el
   z-index: 5 !important;
 }
 
-div[data-testid="element-container"]:has(.skip-btn-marker) ~ div[data-testid="element-container"] button {
+div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="element-container"] button {
   background: #1e2130 !important;
   color: #8892a4 !important;
   border: 1px solid rgba(255,255,255,.14) !important;
@@ -871,7 +871,7 @@ div[data-testid="element-container"]:has(.skip-btn-marker) ~ div[data-testid="el
   transition: background 0.15s, color 0.15s !important;
 }
 
-div[data-testid="element-container"]:has(.skip-btn-marker) ~ div[data-testid="element-container"] button:hover {
+div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="element-container"] button:hover {
   background: #262b3e !important;
   color: #c0c6d6 !important;
   border-color: rgba(255,255,255,.22) !important;

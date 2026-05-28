@@ -4310,92 +4310,83 @@ if user_input:
 
         st.session_state.processing_pending_input = False
 
-        is_connected_stage = st.session_state.get("escalation_stage") == "connected"
-        if is_connected_stage:
-            st.session_state.live_agent_chat_turns = st.session_state.get("live_agent_chat_turns", 0) + 1
-            guard_blocked = False
-            rag_context = None
-            rag_title = None
-        else:
-            # --- Layer 1: Guardrails -----------------------------------------------
-            guard = check_guardrails(user_input)
-
-            if guard.blocked:
-                st.session_state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": guard.refusal_text,
-                        "timestamp": ts_now,
-                        "blocked": True,
-                    }
-                )
-                st.rerun()
-
-            # --- Layer 2: Escalation keyword check ---------------------------------
-            if guard.escalation_triggered:
-                start_escalation_triage()
-                st.rerun()
-
-            # --- Layer 3: Dynamic HTML RAG retrieval -------------------------------
-            is_ticket_query = is_ticket_status_lookup_intent(user_input)
-            
-            relevant_playbooks = []
-            if not is_ticket_query:
-                logger.info("Attempting RAG retrieval for input: '%s'", user_input)
-                # Timestamp-gated refresh: hits GCS only if pool is stale or missing
-                _kb.PLAYBOOKS = refresh_playbook_pool()
-                relevant_playbooks = retrieve_context(user_input, top_k=1)
-            else:
-                logger.info("Ticket query detected. Skipping RAG retrieval to prevent model distraction.")
-                
-            rag_context: str | None = None
-            rag_title: str | None = None
-
-            if relevant_playbooks:
-                rag_context_parts = []
-                rag_titles_list = []
-                for p in relevant_playbooks:
-                    content = p["content"]
-                    if p.get("source") == "adhoc":
-                        rag_context_parts.append(f"### [CRITICAL ADHOC OVERRIDE BULLETIN]\n{content}")
-                    else:
-                        rag_context_parts.append(content)
-                    rag_titles_list.append(p["title"])
-                rag_context = "\n\n".join(rag_context_parts)
-                rag_title = ", ".join(rag_titles_list)
-                logger.info("RAG playbook hits: '%s'", rag_title)
-            elif not is_ticket_query and not st.session_state.get("kb_available", True):
-                # KB is genuinely unavailable (GCS unreachable, no cache) — degrade gracefully
-                # rather than letting the LLM hallucinate troubleshooting steps.
-                logger.warning("KB unavailable. Injecting degradation message and offering escalation.")
-                ts_now = time.strftime("%H:%M")
-                degradation_msg = (
-                    "My access to knowledge articles isn't working right now, so I'm not able to "
-                    "properly walk you through troubleshooting steps for this issue.\n\n"
-                    "How would you like to proceed?"
-                )
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": degradation_msg,
-                    "timestamp": ts_now,
-                    "blocked": False
-                })
-                st.rerun()
-            else:
-                logger.info("RAG playbook miss (no match found). Proceeding to conversational LLM fallback.")
-
-
-        # --- Layer 4: LLM call (streaming) -------------------------------------
+        # Immediately open the assistant message container and show a spinner
+        # to force Streamlit to flush the user's message to the browser instantly.
         with st.chat_message("assistant", avatar=assistant_avatar):
-            full_response = ""
             response_placeholder = st.empty()
-            if is_ticket_status_lookup_intent(user_input):
-                response_placeholder.markdown("Retrieving data...")
-
-            try:
-                logger.info("Starting Gemini API streaming response.")
-                client = ChipLLMClient()
+            with st.spinner("Thinking..."):
                 is_connected_stage = st.session_state.get("escalation_stage") == "connected"
+                if is_connected_stage:
+                    st.session_state.live_agent_chat_turns = st.session_state.get("live_agent_chat_turns", 0) + 1
+                    guard_blocked = False
+                    rag_context = None
+                    rag_title = None
+                else:
+                    # --- Layer 1: Guardrails -----------------------------------------------
+                    guard = check_guardrails(user_input)
+
+                    if guard.blocked:
+                        st.session_state.messages.append(
+                            {
+                                "role": "assistant",
+                                "content": guard.refusal_text,
+                                "timestamp": ts_now,
+                                "blocked": True,
+                            }
+                        )
+                        st.rerun()
+
+                    # --- Layer 2: Escalation keyword check ---------------------------------
+                    if guard.escalation_triggered:
+                        start_escalation_triage()
+                        st.rerun()
+
+                    # --- Layer 3: Dynamic HTML RAG retrieval -------------------------------
+                    is_ticket_query = is_ticket_status_lookup_intent(user_input)
+                    
+                    relevant_playbooks = []
+                    if not is_ticket_query:
+                        logger.info("Attempting RAG retrieval for input: '%s'", user_input)
+                        # Timestamp-gated refresh: hits GCS only if pool is stale or missing
+                        _kb.PLAYBOOKS = refresh_playbook_pool()
+                        relevant_playbooks = retrieve_context(user_input, top_k=1)
+                    else:
+                        logger.info("Ticket query detected. Skipping RAG retrieval to prevent model distraction.")
+                        
+                    rag_context = None
+                    rag_title = None
+
+                    if relevant_playbooks:
+                        rag_context_parts = []
+                        rag_titles_list = []
+                        for p in relevant_playbooks:
+                            content = p["content"]
+                            if p.get("source") == "adhoc":
+                                rag_context_parts.append(f"### [CRITICAL ADHOC OVERRIDE BULLETIN]\n{content}")
+                            else:
+                                rag_context_parts.append(content)
+                            rag_titles_list.append(p["title"])
+                        rag_context = "\n\n".join(rag_context_parts)
+                        rag_title = ", ".join(rag_titles_list)
+                        logger.info("RAG playbook hits: '%s'", rag_title)
+                    elif not is_ticket_query and not st.session_state.get("kb_available", True):
+                        logger.warning("KB unavailable. Injecting degradation message and offering escalation.")
+                        degradation_msg = (
+                            "My access to knowledge articles isn't working right now, so I'm not able to "
+                            "properly walk you through troubleshooting steps for this issue.\n\n"
+                            "How would you like to proceed?"
+                        )
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": degradation_msg,
+                            "timestamp": ts_now,
+                            "blocked": False
+                        })
+                        st.rerun()
+                    else:
+                        logger.info("RAG playbook miss (no match found). Proceeding to conversational LLM fallback.")
+
+                # Fetch system instructions
                 sys_inst = None
                 if is_connected_stage:
                     agent_name = st.session_state.live_agent_name
@@ -4417,8 +4408,7 @@ if user_input:
                             f"Use phrases like 'Hi there!' or 'Thanks for that detail,' when appropriate, and be extremely helpful.\n"
                             f"Keep responses relatively concise and do not repeat your initial greeting."
                         )
-
-                if sys_inst is None:
+                else:
                     sys_inst = get_system_instructions(st.session_state.get("demo_personality", "Normal"))
 
                 # Inject language directive for Spanish demo mode
@@ -4432,6 +4422,15 @@ if user_input:
                         "Do NOT switch to English under any circumstances."
                     )
                     sys_inst = sys_inst + _lang_directive
+
+            # Now, out of st.spinner but still inside st.chat_message, we stream the response!
+            if is_ticket_status_lookup_intent(user_input):
+                response_placeholder.markdown("Retrieving data...")
+
+            try:
+                logger.info("Starting Gemini API streaming response.")
+                client = ChipLLMClient()
+                full_response = ""
                 for chunk in client.stream_response(
                     messages=st.session_state.messages,
                     rag_context=rag_context,

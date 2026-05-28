@@ -871,6 +871,11 @@ div[data-testid="stVerticalBlock"]:has(.recommended-troubleshooting-banner):has(
 /* ── Hide Streamlit chrome ───────────────────────────────────────────────── */
 #MainMenu, header[data-testid="stHeader"], footer { display: none !important; }
 .viewerBadge_container__1QSob { display: none !important; }
+
+/* ── Prevent default Streamlit gray-out loading overlay ──────────────────── */
+div[data-testid="stAppViewContainer"] [data-testid="stVerticalBlock"] > div {
+  opacity: 1 !important;
+}
 </style>
 """,
     unsafe_allow_html=True,

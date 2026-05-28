@@ -54,6 +54,10 @@ def refresh_playbook_pool(*, force: bool = False) -> list[dict]:
 
     Between refreshes the session_state pool is returned immediately with
     zero network calls, keeping the chat input fully responsive.
+
+    Sets st.session_state.kb_available = False when GCS is unreachable and
+    no cached pool exists, so callers can degrade gracefully instead of
+    hallucinating troubleshooting steps from general LLM knowledge.
     """
     now = time.time()
     last_loaded = st.session_state.get("kb_loaded_at", 0)
@@ -67,14 +71,21 @@ def refresh_playbook_pool(*, force: bool = False) -> list[dict]:
         if pool:
             st.session_state.knowledge_base = pool
             st.session_state.kb_loaded_at   = now
+            st.session_state.kb_available    = True
             logger.info("Playbook pool refreshed: %d entries.", len(pool))
         else:
-            # GCS unreachable — keep whatever we have (or fall back to module-init)
-            if not pool_exists:
-                st.session_state.knowledge_base = _kb.PLAYBOOKS
+            if pool_exists:
+                # GCS temporarily unreachable — keep the cached pool, still available
+                logger.warning("GCS returned empty pool. Retaining %d cached entries.", len(st.session_state.knowledge_base))
+                st.session_state.kb_available = True
+            else:
+                # No cache and no GCS — knowledge base is genuinely unavailable
+                st.session_state.knowledge_base = []
                 st.session_state.kb_loaded_at   = now
+                st.session_state.kb_available    = False
+                logger.error("GCS unreachable and no cached pool. KB unavailable — will degrade gracefully.")
 
-    return st.session_state.get("knowledge_base", _kb.PLAYBOOKS)
+    return st.session_state.get("knowledge_base", [])
 
 
 import re as _re_guardrail
@@ -4101,8 +4112,26 @@ if user_input:
                 rag_context = "\n\n".join(rag_context_parts)
                 rag_title = ", ".join(rag_titles_list)
                 logger.info("RAG playbook hits: '%s'", rag_title)
+            elif not is_ticket_query and not st.session_state.get("kb_available", True):
+                # KB is genuinely unavailable (GCS unreachable, no cache) — degrade gracefully
+                # rather than letting the LLM hallucinate troubleshooting steps.
+                logger.warning("KB unavailable. Injecting degradation message and offering escalation.")
+                ts_now = time.strftime("%H:%M")
+                degradation_msg = (
+                    "My access to knowledge articles isn't working right now, so I'm not able to "
+                    "properly walk you through troubleshooting steps for this issue.\n\n"
+                    "How would you like to proceed?"
+                )
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": degradation_msg,
+                    "timestamp": ts_now,
+                    "blocked": False
+                })
+                st.rerun()
             else:
                 logger.info("RAG playbook miss (no match found). Proceeding to conversational LLM fallback.")
+
 
         # --- Layer 4: LLM call (streaming) -------------------------------------
         with st.chat_message("assistant", avatar="👨‍💻"):

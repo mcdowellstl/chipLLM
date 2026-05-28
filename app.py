@@ -689,9 +689,8 @@ div[data-testid="stVerticalBlock"]:has(#outage-action-col) .stButton > button:ho
 div[data-testid="stVerticalBlock"]:has(#demo-gear-col) .stButton > button,
 div[data-testid="stVerticalBlock"]:has(#restore-mim-col) .stButton > button {
   background: transparent !important;
-  border: 1px solid rgba(255,255,255,0.10) !important;
+  border: none !important;
   color: #8892a4 !important;
-  font-size: 16px !important;
   line-height: 1 !important;
   padding: 0 !important;
   min-height: 36px !important;
@@ -701,13 +700,19 @@ div[data-testid="stVerticalBlock"]:has(#restore-mim-col) .stButton > button {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  transition: background 0.15s, color 0.15s !important;
+  transition: color 0.15s !important;
+}
+div[data-testid="stVerticalBlock"]:has(#restore-mim-col) .stButton > button {
+  font-size: 18px !important;
+}
+div[data-testid="stVerticalBlock"]:has(#demo-gear-col) .stButton > button {
+  font-size: 20px !important;
 }
 div[data-testid="stVerticalBlock"]:has(#demo-gear-col) .stButton > button:hover,
 div[data-testid="stVerticalBlock"]:has(#restore-mim-col) .stButton > button:hover {
-  background: var(--bg-card) !important;
+  background: transparent !important;
   color: var(--text-primary) !important;
-  border-color: rgba(255,255,255,0.2) !important;
+  border: none !important;
 }
 
 /* ── Streamlit default markdown in chat ──────────────────────────────────── */

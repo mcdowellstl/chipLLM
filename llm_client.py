@@ -999,17 +999,48 @@ class ChipLLMClient:
         
         config = genai_types.GenerateContentConfig(
             temperature=0.7,
-            max_output_tokens=512,
+            # 256 tokens is more than enough for an 80-word question;
+            # keep it tight to reduce latency and avoid MAX_TOKENS cutoffs.
+            max_output_tokens=256,
             automatic_function_calling=genai_types.AutomaticFunctionCallingConfig(disable=True),
         )
-        
-        response = self._client.models.generate_content(
-            model=self._model,
-            contents=[prompt],
-            config=config,
-        )
-        
-        return response.text
+
+        MAX_RETRIES = 2
+        response = None
+        for _attempt in range(MAX_RETRIES + 1):
+            try:
+                response = self._client.models.generate_content(
+                    model=self._model,
+                    contents=[prompt],
+                    config=config,
+                )
+                break
+            except Exception as _e:
+                if "429" in str(_e) and _attempt < MAX_RETRIES:
+                    time.sleep(2 ** _attempt)
+                    continue
+                raise
+
+        # Safely extract text from candidates instead of response.text,
+        # which raises ValueError when finish_reason != STOP.
+        extracted = ""
+        if response and response.candidates:
+            for candidate in response.candidates:
+                if candidate.content and candidate.content.parts:
+                    for part in candidate.content.parts:
+                        if part.text:
+                            extracted += part.text
+                # Only use the result if the model finished cleanly
+                finish = getattr(candidate, "finish_reason", None)
+                finish_name = getattr(finish, "name", str(finish)) if finish else "UNKNOWN"
+                if finish_name not in ("STOP", "1", "FinishReason.STOP"):
+                    import logging as _logging
+                    _logging.getLogger("chipLLM.generate_agent_question").warning(
+                        "Agent question finish_reason=%s — response may be truncated", finish_name
+                    )
+                    extracted = ""  # discard partial; caller will use fallback
+
+        return extracted.strip()
 
 
     def generate_issue_description(self, messages: list[dict]) -> str:

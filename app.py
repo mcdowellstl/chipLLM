@@ -182,12 +182,13 @@ st.markdown(
 /* ── Google Font ─────────────────────────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-/* Completely hide the sidebar and collapsed control arrow */
-[data-testid="stSidebar"] {
-  display: none !important;
-}
+
+/* ── Sidebar toggle arrow — styled to match the dark theme ─────────────────── */
 [data-testid="collapsedControl"] {
-  display: none !important;
+  color: var(--text-muted) !important;
+}
+[data-testid="collapsedControl"]:hover {
+  color: var(--text-primary) !important;
 }
 
 /* ── Root tokens ─────────────────────────────────────────────────────────── */
@@ -463,6 +464,47 @@ div[data-testid="stVerticalBlock"]:has(#active-cases-marker) .stButton > button:
   padding: 12px 14px 20px;
   position: sticky;
   bottom: 0;
+}
+
+/* ── Streamlit sidebar ───────────────────────────────────────────────────── */
+[data-testid="stSidebar"] {
+  background: var(--bg-panel) !important;
+  border-right: 1px solid var(--border) !important;
+  padding-top: 0 !important;
+}
+[data-testid="stSidebar"] > div:first-child {
+  padding-top: 1.25rem !important;
+}
+/* Section header text */
+[data-testid="stSidebar"] .sidebar-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 14px 0 6px 0;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+/* Slider track */
+[data-testid="stSidebar"] [data-testid="stSlider"] [data-baseweb="slider"] [data-testid="stTickBar"] {
+  color: var(--text-muted) !important;
+  font-size: 10px !important;
+}
+/* Slider labels */
+[data-testid="stSidebar"] label[data-testid="stWidgetLabel"] p {
+  color: var(--text-secondary) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+/* Select-slider value pill */
+[data-testid="stSidebar"] [data-testid="stSlider"] {
+  padding: 0 0 8px 0 !important;
+}
+[data-testid="stSidebar"] .stMarkdown h1,
+[data-testid="stSidebar"] .stMarkdown h2,
+[data-testid="stSidebar"] .stMarkdown h3 {
+  color: var(--text-primary) !important;
 }
 
 /* Override Streamlit's chat input ──────────────────────────────────────── */
@@ -3493,6 +3535,68 @@ if not st.session_state.messages:
         "timestamp": time.strftime("%H:%M"),
         "blocked": False
     })
+
+# ---------------------------------------------------------------------------
+# Demo Controls sidebar (collapsed by default)
+# ---------------------------------------------------------------------------
+
+with st.sidebar:
+    st.markdown(
+        '<div style="font-size:11px;font-weight:700;letter-spacing:1px;'
+        'text-transform:uppercase;color:#8892a4;padding-bottom:10px;'
+        'border-bottom:1px solid rgba(255,255,255,0.07);margin-bottom:14px;">'
+        '&#9881;&#65039;&nbsp;&nbsp;Demo Controls'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # 1. Personality
+    st.markdown(
+        '<div class="sidebar-section-label">Personality</div>',
+        unsafe_allow_html=True,
+    )
+    st.session_state.demo_personality = st.select_slider(
+        "Personality",
+        options=["Normal", "Casual", "Unhinged"],
+        value=st.session_state.get("demo_personality", "Normal"),
+        key="demo_personality_slider",
+        label_visibility="collapsed",
+    )
+
+    # 2. Capability
+    st.markdown(
+        '<div class="sidebar-section-label">Capability</div>',
+        unsafe_allow_html=True,
+    )
+    st.session_state.demo_capability = st.select_slider(
+        "Capability",
+        options=["Current", "Automation"],
+        value=st.session_state.get("demo_capability", "Current"),
+        key="demo_capability_slider",
+        label_visibility="collapsed",
+    )
+
+    # 3. Language
+    st.markdown(
+        '<div class="sidebar-section-label">Language</div>',
+        unsafe_allow_html=True,
+    )
+    st.session_state.demo_language = st.select_slider(
+        "Language",
+        options=["English", "Spanish"],
+        value=st.session_state.get("demo_language", "English"),
+        key="demo_language_slider",
+        label_visibility="collapsed",
+    )
+
+    st.markdown(
+        '<div style="margin-top:24px;padding-top:12px;'
+        'border-top:1px solid rgba(255,255,255,0.06);'
+        'font-size:10px;color:#3a4258;line-height:1.6;">'
+        'Demo controls only &mdash; changes are not wired to production behavior yet.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 # ---------------------------------------------------------------------------
 # Render conversation history

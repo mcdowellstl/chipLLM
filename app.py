@@ -1619,6 +1619,40 @@ def is_duplicate_matching_question(content: str) -> bool:
     return has_same_phrase and is_question and (has_ticket_ref or "open case" in content_lower or "existing case" in content_lower)
 
 
+def _get_related_mim_for_context(response_content: str) -> dict | None:
+    """
+    Returns the first active, non-dismissed MIM that appears related to the
+    current LLM response content, based on keyword overlap.
+    Surfaces a 'Mark as Affected' chip when a match is found.
+    """
+    active_mims = st.session_state.get("active_mims", [])
+    dismissed = st.session_state.get("mim_dismissed", {})
+    if not active_mims:
+        return None
+
+    import re as _re_mim
+    _STOP = {
+        "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+        "have", "has", "had", "do", "does", "did", "will", "would", "could",
+        "should", "may", "might", "shall", "can", "to", "of", "in", "for",
+        "on", "with", "at", "by", "from", "as", "it", "its", "this", "that",
+        "all", "any", "but", "not", "or", "and", "if", "so", "yet", "your",
+        "you", "we", "our", "they", "them", "there", "here", "when", "what",
+        "how", "just", "also", "more", "some", "much", "time", "like",
+    }
+    response_lower = response_content.lower()
+    response_words = {w for w in _re_mim.findall(r'\b[a-z]{4,}\b', response_lower) if w not in _STOP}
+    for mim in active_mims:
+        norm_id = mim["number"].upper().strip()
+        if dismissed.get(norm_id, False):
+            continue
+        mim_text = (mim.get("short_description", "") + " " + mim.get("description", "")).lower()
+        mim_words = {w for w in _re_mim.findall(r'\b[a-z]{4,}\b', mim_text) if w not in _STOP}
+        if len(mim_words & response_words) >= 2:
+            return mim
+    return None
+
+
 def get_choices_from_message(content: str) -> list[str]:
     """
     Extract discrete choice options from typical assistant questions.
@@ -1671,7 +1705,11 @@ def get_choices_from_message(content: str) -> list[str]:
     # Full two-button escalation — only for genuine troubleshooting exhaustion
     if "how would you like to proceed" in content_lower and ("open a support ticket" in content_lower or "live chat" in content_lower):
         if not is_lookup:
-            return ["Open a support ticket", "Live Chat with an Agent"]
+            options = ["Open a support ticket", "Live Chat with an Agent"]
+            related_mim = _get_related_mim_for_context(content)
+            if related_mim:
+                options.append("\u26a1 Mark as Affected")
+            return options
 
     # Single "Live Chat with an Agent" chip — when LLM says it can't act on a ticket
     # and directs the user to an agent (but not to open a new ticket)
@@ -3793,6 +3831,44 @@ if user_input:
         if not _re.search(r"\b(?:inc|rc00|rc)[-_]?\d+\b", lower_input):
             st.session_state.active_case_id = None
             logger.info("Cleared active_case_id context for general/bulk query.")
+
+    # ── Mark as Affected intercept ────────────────────────────────────────
+    # Triggered when the user clicks "\u26a1 Mark as Affected" in the escalation chip row.
+    # Behaves identically to the Affected button on the Active Outage banner.
+    if user_input.strip() == "\u26a1 Mark as Affected":
+        active_mims = st.session_state.get("active_mims", [])
+        dismissed_map = st.session_state.get("mim_dismissed", {})
+        linked_mim = None
+        for _mim in active_mims:
+            _norm = _mim["number"].upper().strip()
+            if not dismissed_map.get(_norm, False):
+                linked_mim = _mim
+                break
+        if linked_mim:
+            import logging as _log_mim
+            _log_mim.getLogger("chipLLM").info(
+                "[MOCK TRACKING] Store %s reported MIM %s via chat escalation prompt.",
+                st.session_state.active_store, linked_mim['number']
+            )
+            _mim_title = linked_mim.get("short_description", "Active Outage")
+            _mim_num = linked_mim["number"]
+            st.session_state.messages.append({
+                "role": "user",
+                "content": "\u26a1 Mark as Affected",
+                "timestamp": ts_now,
+                "blocked": False
+            })
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": (
+                    f"\u2705 Done \u2014 your store has been linked to master incident **{_mim_num}** "
+                    f"(*{_mim_title}*). Our engineers are already working on it. "
+                    f"No ticket is needed on your end; you'll be updated as the outage resolves."
+                ),
+                "timestamp": ts_now,
+                "blocked": False
+            })
+        st.rerun()
 
     # Detect cafe issues and route immediately to live human agent
     if is_cafe_issue(user_input) and not st.session_state.get("escalated", False):

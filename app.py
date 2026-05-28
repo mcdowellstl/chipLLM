@@ -1830,7 +1830,103 @@ def _get_related_mim_for_context(response_content: str) -> dict | None:
     return None
 
 
+@st.cache_data(ttl=3600)
+def shorten_choice_via_llm(choice: str, max_chars: int = 15) -> str:
+    """
+    Shorten a single choice/button text to not exceed max_chars.
+    Checks deterministic/static mapping first, then falls back to calling LLM,
+    and finally falls back to simple programmatic truncation.
+    """
+    if not choice:
+        return choice
+        
+    choice_stripped = choice.strip()
+    choice_lower = choice_stripped.lower()
+    
+    # 0. Bypass list for action buttons that control application state flow
+    bypass_set = {
+        "open a support ticket",
+        "live chat with an agent",
+        "manual ticket flow",
+        "continue with automated flow",
+        "same issue",
+        "different issue",
+        "⚡ mark as affected",
+        "mark as affected",
+    }
+    if choice_lower in bypass_set or "mark as affected" in choice_lower or "live chat" in choice_lower:
+        return choice_stripped
+
+    # 1. Deterministic/static mappings (as requested by the user and playbooks)
+    if "not printing at all" in choice_lower:
+        return "Not Printing"
+    if "printing garbled text" in choice_lower:
+        return "Garbled Text"
+    if "error light / beeping" in choice_lower or "error light/beeping" in choice_lower or "error light or beeping" in choice_lower:
+        return "Error Light"
+
+    # If the choice is already short enough, return it as-is
+    if len(choice_stripped) <= max_chars:
+        return choice_stripped
+
+    # 2. Dynamic LLM-based shortening fallback
+    try:
+        from llm_client import ChipLLMClient
+        from google.genai import types as genai_types
+        client = ChipLLMClient()
+        prompt = (
+            f"You are a UI optimization helper. Shorten the following button text so it is under {max_chars} characters (inclusive).\n"
+            f"Ensure the shortened text retains the most critical technical symptom or action noun/adjective, rather than just chopping words.\n\n"
+            f"Examples:\n"
+            f"- 'Screen is Black or Frozen' -> 'Frozen Screen'\n"
+            f"- 'Credit Card Reader Failing' -> 'Card Reader Fail'\n"
+            f"- 'Printer Not Printing Receipt' -> 'Receipt Fail'\n"
+            f"- 'Software crash or error message' -> 'Software Crash'\n"
+            f"- 'Payment terminal error' -> 'Payment Error'\n\n"
+            f"Input text: '{choice_stripped}'\n"
+            f"Rules:\n"
+            f"1. The output MUST be strictly under or equal to {max_chars} characters long.\n"
+            f"2. Retain the core technical meaning of the input text.\n"
+            f"3. Do not include quotes, periods, explanation, or any other conversational text. Output ONLY the shortened label itself.\n"
+            f"4. Capitalize it appropriately.\n"
+            f"Shortened text:"
+        )
+        config = genai_types.GenerateContentConfig(
+            temperature=0.0,
+            max_output_tokens=50,
+        )
+        response = client._client.models.generate_content(
+            model=client._model,
+            contents=[prompt],
+            config=config,
+        )
+        result = response.text.strip().replace('"', '').replace("'", "")
+        if result and len(result) <= max_chars:
+            return result
+    except Exception:
+        pass
+
+    # 3. Simple programmatic truncation fallback
+    words = choice_stripped.split()
+    if len(words) > 1:
+        short = " ".join(words[:2])
+        if len(short) <= max_chars:
+            return short
+    return choice_stripped[:max_chars].strip()
+
+
 def get_choices_from_message(content: str) -> list[str]:
+    """
+    Wrapper around _get_raw_choices_from_message to summarize/shorten
+    any option that doesn't fit on the buttons.
+    """
+    raw_choices = _get_raw_choices_from_message(content)
+    if not raw_choices:
+        return []
+    return [shorten_choice_via_llm(choice) for choice in raw_choices]
+
+
+def _get_raw_choices_from_message(content: str) -> list[str]:
     """
     Extract discrete choice options from typical assistant questions.
     Supports Yes/No questions, Location questions, and Unit numbers.

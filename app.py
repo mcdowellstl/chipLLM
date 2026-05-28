@@ -313,15 +313,13 @@ html, body, [class*="css"] {
   background: rgba(255,255,255,.06) !important;
   border: 1px solid rgba(255,255,255,.13) !important;
   color: #f0f2f8 !important;
-  font-size: 12px !important;
-  font-weight: 600 !important;
   min-height: 36px !important;
   height: 36px !important;
   border-radius: 8px !important;
   line-height: 1 !important;
   display: flex !important;
   align-items: center !important;
-  padding: 0 8px !important;
+  padding: 0 4px !important;
   white-space: nowrap !important;
 }
 
@@ -331,11 +329,18 @@ html, body, [class*="css"] {
   background: rgba(255,255,255,.09) !important;
 }
 
+/* Override native focus borders on selectbox */
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] > div > div:focus-within {
+  border-color: rgba(255,199,44,.6) !important;
+  box-shadow: 0 0 0 1px rgba(255,199,44,.6) !important;
+}
+
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] svg {
   fill: #8892a4 !important;
-  width: 13px !important;
-  height: 13px !important;
+  width: 12px !important;
+  height: 12px !important;
 }
 
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
@@ -345,13 +350,22 @@ html, body, [class*="css"] {
 
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [class*="ValueContainer"] {
-  padding: 0 4px !important;
+  padding: 0 2px !important;
+}
+
+/* Force smaller font-size on both text and emoji icon inside selectbox */
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [class*="ValueContainer"],
+[data-testid="stMarkdownContainer"]:has(#header-sentinel)
+  + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [class*="ValueContainer"] * {
+  font-size: 13px !important;
+  font-weight: 600 !important;
 }
 
 [data-testid="stMarkdownContainer"]:has(#header-sentinel)
   + [data-testid="stHorizontalBlock"] [data-testid="stSelectbox"] [data-baseweb="select"] > div {
-  padding-left: 8px !important;
-  padding-right: 24px !important;
+  padding-left: 6px !important;
+  padding-right: 20px !important;
 }
 
 /* Active Cases button — ID marker approach (same as outage buttons fix).

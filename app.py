@@ -837,21 +837,26 @@ div.chips-sentinel + div[data-testid="stHorizontalBlock"] button:hover {
 }
 
 /* ── Recommended Troubleshooting Banner — skip button positioned inside via .skip-btn-marker */
-/* Hide the element container wrapping the skip button marker so it doesn't take space */
+/* Collapse the element container wrapping the skip button marker so it takes 0 layout space */
 div[data-testid="element-container"]:has(.skip-btn-marker) {
-  display: none !important;
+  height: 0px !important;
+  margin: 0px !important;
+  padding: 0px !important;
+  overflow: hidden !important;
 }
 
-/* Target the element-container containing the button immediately following the marker container */
-div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="element-container"] {
-  margin-top: -38px !important;
+/* Target the stButton immediately following the marker container */
+div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="element-container"] div[data-testid="stButton"],
+div[data-testid="stVerticalBlock"]:has(.skip-btn-marker) div[data-testid="stButton"] {
+  margin-top: -46px !important;
   padding-left: 14px !important;
   padding-bottom: 6px !important;
   position: relative !important;
   z-index: 5 !important;
 }
 
-div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="element-container"] button {
+div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="element-container"] button,
+div[data-testid="stVerticalBlock"]:has(.skip-btn-marker) div[data-testid="stButton"] button {
   background: #1e2130 !important;
   color: #8892a4 !important;
   border: 1px solid rgba(255,255,255,.14) !important;
@@ -868,11 +873,13 @@ div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="el
   transition: background 0.15s, color 0.15s !important;
 }
 
-div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="element-container"] button:hover {
+div[data-testid="element-container"]:has(.skip-btn-marker) + div[data-testid="element-container"] button:hover,
+div[data-testid="stVerticalBlock"]:has(.skip-btn-marker) div[data-testid="stButton"] button:hover {
   background: #262b3e !important;
   color: #c0c6d6 !important;
   border-color: rgba(255,255,255,.22) !important;
 }
+
 
 
 

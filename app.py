@@ -866,6 +866,7 @@ if st.session_state.get("needs_reset", False):
     st.session_state.messages = []
     st.session_state.ticket_metadata = None
     st.session_state.escalation_triggered = False
+    st.session_state.active_playbooks = []
     st.session_state.rag_hits = {}
     st.session_state.ticket_collection_active = False
     st.session_state.manual_ticket_flow = False
@@ -928,6 +929,9 @@ if "escalation_triggered" not in st.session_state:
 
 if "rag_hits" not in st.session_state:
     st.session_state.rag_hits = {}  # msg_index -> playbook title
+
+if "active_playbooks" not in st.session_state:
+    st.session_state.active_playbooks = []
 
 # Auth & Ticket state
 if "store_confirmed" not in st.session_state:
@@ -4407,8 +4411,15 @@ if user_input:
                         # Timestamp-gated refresh: hits GCS only if pool is stale or missing
                         _kb.PLAYBOOKS = refresh_playbook_pool()
                         relevant_playbooks = retrieve_context(user_input, top_k=1)
+                        if relevant_playbooks:
+                            st.session_state.active_playbooks = relevant_playbooks
+                            logger.info("Found matching playbook(s): %s. Saved to active_playbooks.", [p['title'] for p in relevant_playbooks])
+                        elif st.session_state.get("active_playbooks"):
+                            relevant_playbooks = st.session_state.active_playbooks
+                            logger.info("Carrying forward active playbook(s): %s.", [p['title'] for p in relevant_playbooks])
                     else:
                         logger.info("Ticket query detected. Skipping RAG retrieval to prevent model distraction.")
+                        st.session_state.active_playbooks = []
                         
                     rag_context = None
                     rag_title = None

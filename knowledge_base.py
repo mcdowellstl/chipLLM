@@ -216,66 +216,91 @@ def retrieve_context(user_message: str, top_k: int = 1) -> list[dict]:
     Perform fuzzy matching retrieval against the playbook knowledge base.
     Handles typos, abbreviations, and implements a two-pass context builder.
     Ad-hoc playbooks bypass truncation limits and sit at the top.
+
+    Scoring strategy:
+    - Exact keyword phrase hits score up to 2.0 (boosted) to ensure genuinely
+      relevant playbooks beat ones that only share incidental words.
+    - Single-word fuzzy hits only count when ratio >= 0.85 to reduce false
+      positives (e.g. "not" in "Cash Drawer Not Opening" matching "not printing").
+    - Full-phrase substring hits score 0.6–1.0 against title/id candidates.
+    - Final threshold to be included in results: 0.6.
     """
     query_words = preprocess_text(user_message)
     if not query_words:
         return []
-        
-    STOPWORDS = {"my", "is", "the", "a", "an", "on", "of", "to", "in", "at", "for", "with", "and", "or", "having", "it", "are", "you"}
+
+    STOPWORDS = {"my", "is", "the", "a", "an", "on", "of", "to", "in", "at",
+                 "for", "with", "and", "or", "having", "it", "are", "you"}
     query_clean = " ".join(query_words)
     scored: list[tuple[float, dict]] = []
 
     for playbook in PLAYBOOKS:
-        # Build candidate target strings for this playbook
-        candidates = []
+        # Separate keyword candidates (high-signal) from title/id (lower signal)
+        kw_candidates  = [kw.lower() for kw in playbook.get("keywords", [])]
+        id_title_cands = []
         if playbook.get("id"):
-            candidates.append(playbook["id"].lower().replace("_", " "))
+            id_title_cands.append(playbook["id"].lower().replace("_", " "))
         if playbook.get("title"):
-            candidates.append(playbook["title"].lower())
-        for kw in playbook.get("keywords", []):
-            candidates.append(kw.lower())
+            id_title_cands.append(playbook["title"].lower())
+        all_candidates = id_title_cands + kw_candidates
 
         best_score = 0.0
-        
-        # Word-by-word fuzzy matching
-        for q_word in query_words:
-            if len(q_word) < 3 or q_word in STOPWORDS:
-                continue
-            for cand in candidates:
-                cand_words = re.findall(r'\b\w+\b', cand)
-                for c_word in cand_words:
-                    ratio = fuzzy_match_ratio(q_word, c_word)
-                    if ratio > best_score:
-                        best_score = ratio
 
-        # Full phrase matching against candidate targets
-        for cand in candidates:
-            # Check exact substring first
+        # --- Pass A: exact keyword phrase match (boosted up to 2.0) ---
+        for kw in kw_candidates:
+            if query_clean in kw or kw in query_clean:
+                length_ratio = (
+                    min(len(query_clean), len(kw)) / max(len(query_clean), len(kw))
+                    if max(len(query_clean), len(kw)) > 0 else 1.0
+                )
+                # Boost: keyword phrase hits score in range [1.0, 2.0]
+                kw_score = 1.0 + length_ratio
+                if kw_score > best_score:
+                    best_score = kw_score
+            # Full-phrase fuzzy match against keyword (boosted by 1.0)
+            r = fuzzy_match_ratio(query_clean, kw)
+            boosted = r + 1.0 if r >= 0.75 else r
+            if boosted > best_score:
+                best_score = boosted
+
+        # --- Pass B: title/id substring match (unboosted, 0.6–1.0) ---
+        for cand in id_title_cands:
             if query_clean in cand or cand in query_clean:
-                # Normalise score between 0.0 and 1.0 (min_len / max_len)
-                score = min(len(query_clean), len(cand)) / max(len(query_clean), len(cand)) if max(len(query_clean), len(cand)) > 0 else 0.0
-                # Give it a baseline match confidence of 0.6 if it matches substring
+                score = (
+                    min(len(query_clean), len(cand)) / max(len(query_clean), len(cand))
+                    if max(len(query_clean), len(cand)) > 0 else 1.0
+                )
                 score = max(0.6, score)
                 if score > best_score:
                     best_score = score
-            ratio = fuzzy_match_ratio(query_clean, cand)
-            if ratio > best_score:
-                best_score = ratio
+            r = fuzzy_match_ratio(query_clean, cand)
+            if r > best_score:
+                best_score = r
 
-        # Threshold of 0.6 to count as a fuzzy match
+        # --- Pass C: single-word fuzzy match (high threshold to avoid noise) ---
+        for q_word in query_words:
+            if len(q_word) < 3 or q_word in STOPWORDS:
+                continue
+            for cand in all_candidates:
+                for c_word in re.findall(r'\b\w+\b', cand):
+                    r = fuzzy_match_ratio(q_word, c_word)
+                    # Only count strong single-word matches to avoid false positives
+                    if r >= 0.85 and r > best_score:
+                        best_score = r
+
+        # Include if above the minimum relevance threshold
         if best_score >= 0.6:
             scored.append((best_score, playbook))
 
-    # Sort matches by score descending
+    # Sort by score descending
     scored.sort(key=lambda x: x[0], reverse=True)
     matched_playbooks = [p for _, p in scored]
 
     # Pass 2: Separate adhoc and baseline matches
-    adhoc_matches = [p for p in matched_playbooks if p.get("source") == "adhoc"]
+    adhoc_matches  = [p for p in matched_playbooks if p.get("source") == "adhoc"]
     baseline_matches = [p for p in matched_playbooks if p.get("source") != "adhoc"]
 
     # Ad-hoc matches bypass length truncation and sit at the top.
     # Baseline matches are limited to top_k.
-    returned_playbooks = adhoc_matches + baseline_matches[:top_k]
-    return returned_playbooks
+    return adhoc_matches + baseline_matches[:top_k]
 

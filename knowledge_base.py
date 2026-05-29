@@ -236,12 +236,13 @@ def retrieve_context(user_message: str, top_k: int = 1) -> list[dict]:
 
     for playbook in PLAYBOOKS:
         # Separate keyword candidates (high-signal) from title/id (lower signal)
-        kw_candidates  = [kw.lower() for kw in playbook.get("keywords", [])]
+        # Preprocess/expand keywords to match query vocabulary
+        kw_candidates  = [" ".join(preprocess_text(kw)) for kw in playbook.get("keywords", [])]
         id_title_cands = []
         if playbook.get("id"):
-            id_title_cands.append(playbook["id"].lower().replace("_", " "))
+            id_title_cands.append(" ".join(preprocess_text(playbook["id"].replace("_", " "))))
         if playbook.get("title"):
-            id_title_cands.append(playbook["title"].lower())
+            id_title_cands.append(" ".join(preprocess_text(playbook["title"])))
         all_candidates = id_title_cands + kw_candidates
 
         best_score = 0.0
